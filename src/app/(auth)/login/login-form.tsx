@@ -1,0 +1,82 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { clientAuth } from "@/lib/firebase/client";
+
+const schema = z.object({
+  email: z.string().email("Enter a valid email"),
+  password: z.string().min(6, "Minimum 6 characters"),
+});
+type Values = z.infer<typeof schema>;
+
+export function LoginForm() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<Values>({ resolver: zodResolver(schema) });
+
+  async function onSubmit(values: Values) {
+    setLoading(true);
+    try {
+      const cred = await signInWithEmailAndPassword(clientAuth, values.email, values.password);
+      const idToken = await cred.user.getIdToken();
+
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+
+      await signOut(clientAuth); // only the server cookie is used from here on
+
+      if (res.status === 403) {
+        toast.error("Your account has no role assigned. Contact an admin.");
+        return;
+      }
+      if (!res.ok) throw new Error("session");
+
+      router.replace("/");
+      router.refresh();
+    } catch {
+      toast.error("Invalid email or password");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-sm space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold">Welcome back</h2>
+        <p className="text-muted-foreground text-sm">Sign in to manage ADN Adventures</p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" type="email" autoComplete="email" {...register("email")} />
+        {errors.email && <p className="text-destructive text-xs">{errors.email.message}</p>}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="password">Password</Label>
+        <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
+        {errors.password && <p className="text-destructive text-xs">{errors.password.message}</p>}
+      </div>
+
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? "Signing in…" : "Sign in"}
+      </Button>
+    </form>
+  );
+}
