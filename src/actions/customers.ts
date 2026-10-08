@@ -148,15 +148,23 @@ export async function deleteCustomer(id: string): Promise<Result> {
   const snap = await ref.get();
   if (!snap.exists || snap.data()?.isDeleted) return { ok: false, error: "Customer not found" };
 
-  // Block deletion while the customer has live bookings. Needs a composite index; see Step 9.
-  const open = await adminDb
-    .collection(COL.bookings)
-    .where("customerId", "==", id)
-    .where("status", "in", ["enquiry", "confirmed", "paid"])
-    .limit(1)
-    .get();
-  if (!open.empty) {
-    return { ok: false, error: "This customer has open bookings. Complete or cancel them first." };
+  // Block deletion while the customer is an active member of a live booking
+  const memberships = await adminDb.collectionGroup("members").where("customerId", "==", id).get();
+  const activeRefs = new Map(
+    memberships.docs
+      .filter((m) => m.data().status === "active")
+      .map((m) => [m.ref.parent.parent!.path, m.ref.parent.parent!]),
+  );
+  if (activeRefs.size) {
+    const live = (await adminDb.getAll(...activeRefs.values())).some(
+      (b) => b.exists && !b.data()?.isDeleted && ["open", "closed"].includes(b.data()?.status),
+    );
+    if (live) {
+      return {
+        ok: false,
+        error: "This customer is in an upcoming booking. Cancel their membership first.",
+      };
+    }
   }
 
   const batch = adminDb.batch();

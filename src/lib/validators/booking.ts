@@ -30,21 +30,33 @@ export const bookingInputSchema = z
   });
 export type BookingInput = z.infer<typeof bookingInputSchema>;
 
-export const memberInputSchema = z.object({
-  name: z.string().trim().min(2, "Name is too short").max(80, "Max 80 characters"),
-  gender: z.enum(GENDERS),
-  category: z.enum(CATEGORIES),
-  age: z
-    .string()
-    .trim()
-    .refine((v) => v === "" || (/^\d{1,3}$/.test(v) && Number(v) <= 120), "Enter a valid age"),
-  phone: z
-    .string()
-    .trim()
-    .max(20, "Max 20 characters")
-    .refine((v) => v === "" || /^\+?[0-9\s-]{7,20}$/.test(v), "Enter a valid phone number"),
-  sourceId: z.string().min(1, "Choose an order source"),
-  price,
-  note: z.string().trim().max(300, "Max 300 characters"),
-});
+export const memberInputSchema = z
+  .object({
+    customerId: z.string(), // "" = create a new customer from name/phone/email
+    name: z.string().trim().max(80, "Max 80 characters"),
+    phone: z
+      .string()
+      .trim()
+      .max(20, "Max 20 characters")
+      .refine((v) => v === "" || /^\+?[0-9\s-]{7,20}$/.test(v), "Enter a valid phone number"),
+    email: z
+      .string()
+      .trim()
+      .max(100, "Max 100 characters")
+      .refine((v) => v === "" || z.string().email().safeParse(v).success, "Enter a valid email"),
+    gender: z.enum(GENDERS),
+    category: z.enum(CATEGORIES),
+    age: z
+      .string()
+      .trim()
+      .refine((v) => v === "" || (/^\d{1,3}$/.test(v) && Number(v) <= 120), "Enter a valid age"),
+    sourceId: z.string().min(1, "Choose an order source"),
+    price,
+    note: z.string().trim().max(300, "Max 300 characters"),
+  })
+  .superRefine((d, ctx) => {
+    if (!d.customerId && d.name.length < 2) {
+      ctx.addIssue({ code: "custom", path: ["name"], message: "Pick a customer or enter a name" });
+    }
+  });
 export type MemberInput = z.infer<typeof memberInputSchema>;

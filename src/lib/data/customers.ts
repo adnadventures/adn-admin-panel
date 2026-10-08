@@ -59,3 +59,46 @@ export async function listCustomersPage(rawQuery = "", cursor?: string | null): 
     nextCursor: snap.docs.length > PAGE_SIZE && last ? `${last.get(field)}|${last.id}` : null,
   };
 }
+
+export type CustomerTrip = {
+  bookingId: string;
+  title: string;
+  bookingNo: string;
+  travelStart: string;
+  travelEnd: string;
+  bookingStatus: string;
+  currency: string;
+  category: string;
+  price: number;
+  memberStatus: "active" | "cancelled";
+};
+
+export async function listCustomerTrips(customerId: string): Promise<CustomerTrip[]> {
+  const snap = await adminDb.collectionGroup("members").where("customerId", "==", customerId).get();
+  if (snap.empty) return [];
+
+  const refs = new Map(snap.docs.map((m) => [m.ref.parent.parent!.path, m.ref.parent.parent!]));
+  const bookings = new Map(
+    (await adminDb.getAll(...refs.values())).map((b) => [b.ref.path, b]),
+  );
+
+  const trips: CustomerTrip[] = [];
+  for (const m of snap.docs) {
+    const b = bookings.get(m.ref.parent.parent!.path);
+    const bd = b?.data();
+    if (!b?.exists || !bd || bd.isDeleted) continue;
+    trips.push({
+      bookingId: b.id,
+      title: bd.title,
+      bookingNo: bd.bookingNo,
+      travelStart: bd.travelStart,
+      travelEnd: bd.travelEnd,
+      bookingStatus: bd.status,
+      currency: bd.currency,
+      category: m.data().category,
+      price: m.data().price,
+      memberStatus: m.data().status,
+    });
+  }
+  return trips.sort((a, b) => b.travelStart.localeCompare(a.travelStart));
+}

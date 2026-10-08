@@ -11,7 +11,7 @@ import {
 import { memberInputSchema, type MemberInput } from "@/lib/validators/booking";
 import type { AgeCategory, BookingStatus, PerCategory } from "@/types/models";
 
-type Result = { ok: true } | { ok: false; error: string };
+type Result = { ok: true } | { ok: false; error: string; duplicate?: boolean };
 
 class UserError extends Error {}
 function fail(e: unknown): Result {
@@ -30,14 +30,12 @@ type MemberRaw = {
 
 const bookingDoc = (id: string) => adminDb.collection(COL.bookings).doc(id);
 
+
 function memberFields(d: MemberInput) {
   return {
-    name: d.name,
-    searchName: toSearchName(d.name),
     gender: d.gender,
     category: d.category,
     age: d.age === "" ? null : Number(d.age),
-    phone: d.phone,
     note: d.note,
   };
 }
@@ -48,29 +46,97 @@ function activeSource(s: FirebaseFirestore.DocumentSnapshot) {
   return x.name as string;
 }
 
-export async function addMember(bookingId: string, input: unknown): Promise<Result> {
+export async function addMember(bookingId: string, input: unknown, force = false): Promise<Result> {
   const user = await requireUser(); // staff, manager and admin
   const parsed = memberInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
   const price = toMinor(d.price);
 
+  // A new customer with a phone number we already know: warn before creating a duplicate
+  if (!d.customerId && !force) {
+    const digits = d.phone.replace(/\D/g, "").slice(-10);
+    if (digits.length >= 7) {
+      const hit = await adminDb
+        .collection(COL.customers)
+        .where("isDeleted", "==", false)
+        .where("phoneDigits", "==", digits)
+        .limit(1)
+        .get();
+      if (!hit.empty) {
+        return {
+          ok: false,
+          duplicate: true,
+          error: `A customer with this phone already exists: ${hit.docs[0].data().name}. Search and pick them instead.`,
+        };
+      }
+    }
+  }
+
   try {
     await adminDb.runTransaction(async (tx) => {
       const bRef = bookingDoc(bookingId);
-      const [bSnap, sSnap] = await Promise.all([
+      const cRef = d.customerId
+        ? adminDb.collection(COL.customers).doc(d.customerId)
+        : adminDb.collection(COL.customers).doc();
+
+      const [bSnap, sSnap, cSnap, dupSnap] = await Promise.all([
         tx.get(bRef),
         tx.get(adminDb.collection(COL.orderSources).doc(d.sourceId)),
+        d.customerId ? tx.get(cRef) : Promise.resolve(null),
+        d.customerId
+          ? tx.get(
+              bRef.collection("members")
+                .where("customerId", "==", d.customerId)
+                .where("status", "==", "active")
+                .limit(1),
+            )
+          : Promise.resolve(null),
       ]);
+
       const b = bSnap.data() as BookingRaw | undefined;
       if (!bSnap.exists || !b || b.isDeleted) throw new UserError("Booking not found");
       const reason = blockReason(b);
       if (reason) throw new UserError(reason);
       const sourceName = activeSource(sSnap);
 
+      // ---- who is this member? ----
+      let name = d.name;
+      let phone = d.phone;
+      if (d.customerId) {
+        const c = cSnap?.data();
+        if (!cSnap?.exists || !c || c.isDeleted) throw new UserError("Customer not found");
+        if (dupSnap && !dupSnap.empty) throw new UserError(`${c.name} is already in this booking`);
+        name = c.name;
+        phone = c.phone ?? "";
+      } else {
+        tx.set(cRef, {
+          name: d.name,
+          searchName: toSearchName(d.name),
+          phone: d.phone,
+          phoneDigits: d.phone.replace(/\D/g, "").slice(-10),
+          email: d.email.toLowerCase(),
+          country: "India",
+          address: "",
+          notes: "",
+          idDocs: [],
+          ...createMeta(user),
+        });
+        tx.set(
+          adminDb.collection(COL.auditLogs).doc(),
+          auditEntry(user, "customer.create", "customer", cRef.id, {
+            name: d.name, via: "booking", bookingId,
+          }),
+        );
+      }
+
       const mRef = bRef.collection("members").doc();
       tx.set(mRef, {
         bookingId,
+        customerId: cRef.id,
+        name,
+        searchName: toSearchName(name),
+        phone,
         ...memberFields(d),
         sourceId: d.sourceId,
         sourceName,
@@ -88,12 +154,13 @@ export async function addMember(bookingId: string, input: unknown): Promise<Resu
       tx.set(
         adminDb.collection(COL.auditLogs).doc(),
         auditEntry(user, "member.add", "booking", bookingId, {
-          memberId: mRef.id, name: d.name, category: d.category, price,
+          memberId: mRef.id, customerId: cRef.id, name, category: d.category, price,
         }),
       );
     });
     revalidatePath("/bookings");
     revalidatePath(`/bookings/${bookingId}`);
+    revalidatePath("/customers");
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -146,7 +213,7 @@ export async function updateMember(bookingId: string, memberId: string, input: u
       tx.set(
         adminDb.collection(COL.auditLogs).doc(),
         auditEntry(user, "member.update", "booking", bookingId, {
-          memberId, name: d.name, oldPrice: m.price, newPrice: price,
+          memberId, name: m.name, oldPrice: m.price, newPrice: price,
           oldCategory: m.category, newCategory: d.category,
         }),
       );
