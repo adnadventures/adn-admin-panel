@@ -66,27 +66,46 @@ export type TravelPackage = Meta & {
   status: PackageStatus;
 };
 
-export type BookingStatus = "enquiry" | "confirmed" | "paid" | "completed" | "cancelled";
+export type AgeCategory = "adult" | "child" | "senior";
+export type Gender = "male" | "female" | "other";
+export type PerCategory = Record<AgeCategory, number>; // minor units for rates, headcount for counts
+export type BookingStatus = "open" | "closed" | "completed" | "cancelled";
 
 export type Booking = Meta & {
-  bookingNo: string;
-  // IDs + snapshots (names copied at creation)
-  customerId: string;
-  customerName: string;
+  bookingNo: string; // ADN-B-2026-0001
+  title: string;
+  searchName: string;
   packageId: string;
   packageName: string;
+  destination: string;
+  currency: CurrencyCode;
+  travelStart: string; // "YYYY-MM-DD" (IST)
+  travelEnd: string;
+  closeDate: string;   // members can be added until the end of this day
+  minPersons: number;
+  maxPersons: number;  // 0 = no limit
+  rates: PerCategory;  // per-person price by category
+  counts: PerCategory; // active members by category
+  memberCount: number; // active members
+  totalAmount: number; // sum of active member prices
+  status: BookingStatus;
+  notes: string;
+};
+
+export type Member = Meta & {
+  bookingId: string;
+  name: string;
+  searchName: string;
+  gender: Gender;
+  category: AgeCategory;
+  age: number | null;
+  phone: string;
   sourceId: string;
   sourceName: string;
-  travelStart: ISO;
-  travelEnd: ISO;
-  adults: number;
-  children: number;
-  price: Money;           // agreed price
-  status: BookingStatus;  // "paid" is set automatically when fully paid
-  paidInr: number;        // aggregate of income minus refunds (net INR)
-  expensesInr: number;    // aggregate of linked expenses
-  searchName: string;     // lowercase customer name for search
-  notes?: string;
+  price: number; // minor units, booking currency
+  priceOverridden: boolean;
+  status: "active" | "cancelled";
+  note: string;
 };
 
 export type InvoiceStatus = "draft" | "sent" | "partially_paid" | "paid" | "cancelled";
