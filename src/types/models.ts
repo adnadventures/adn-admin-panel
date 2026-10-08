@@ -44,13 +44,16 @@ export type Customer = Meta & {
 
 export type PackageStatus = "draft" | "active" | "archived";
 
+export type PriceBasis = "per_person" | "per_booking";
+
 export type TravelPackage = Meta & {
   name: string;
   searchName: string;
   destination: string;
   days: number;
   nights: number;
-  price: Money; // base / starting price
+  price: Money;
+  priceBasis: PriceBasis;
   inclusions: string[];
   exclusions: string[];
   itinerary: { day: number; title: string; description: string }[];
