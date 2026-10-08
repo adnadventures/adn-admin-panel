@@ -87,7 +87,7 @@ export async function deleteOrderSource(id: string): Promise<ActionResult> {
 
   // Don't delete a source that bookings depend on. Deactivate it instead.
   const used = await adminDb
-    .collection(COL.bookings)
+    .collectionGroup("members")
     .where("sourceId", "==", id)
     .limit(1)
     .get();

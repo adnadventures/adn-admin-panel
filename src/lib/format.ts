@@ -5,3 +5,7 @@ export const formatDate = (iso: string) =>
     month: "short",
     year: "numeric",
   }).format(new Date(iso));
+
+/** Today in India as "YYYY-MM-DD" */
+export const todayIST = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
