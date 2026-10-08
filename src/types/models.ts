@@ -94,6 +94,7 @@ export type Booking = Meta & {
 
 export type Member = Meta & {
   bookingId: string;
+  customerId: string | null; // null only for members created before this change
   name: string;
   searchName: string;
   gender: Gender;

@@ -2,10 +2,14 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
-import { getCustomer } from "@/lib/data/customers";
 import { formatDate } from "@/lib/format";
 import { CustomerActions } from "./customer-actions";
 import { IdProofs } from "./id-proofs";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { CATEGORY_LABEL } from "@/lib/booking-utils";
+import { formatMoney, type CurrencyCode } from "@/lib/finance/currency";
+import { getCustomer, listCustomerTrips } from "@/lib/data/customers";
 
 function Field({ label, value }: { label: string; value?: string }) {
   return (
@@ -20,6 +24,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const user = await requireUser();
   const { id } = await params;
   const customer = await getCustomer(id);
+  const trips = await listCustomerTrips(id);
+
   if (!customer) notFound();
 
   return (
@@ -53,10 +59,31 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CardContent><Field label="" value={customer.notes} /></CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Bookings and payments</CardTitle></CardHeader>
-          <CardContent className="text-muted-foreground text-sm">
-            Booking history will appear here once the Bookings module is built.
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle>Trips ({trips.filter((t) => t.memberStatus === "active").length})</CardTitle></CardHeader>
+          <CardContent>
+            {trips.length === 0 ? (
+              <p className="text-muted-foreground text-sm">Not part of any booking yet.</p>
+            ) : (
+              <ul className="divide-y">
+                {trips.map((t) => (
+                  <li key={t.bookingId} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                    <div>
+                      <Link href={`/bookings/${t.bookingId}`} className="font-medium hover:underline">{t.title}</Link>
+                      <p className="text-muted-foreground text-xs">
+                        {t.bookingNo} · {formatDate(t.travelStart)} – {formatDate(t.travelEnd)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="capitalize">{t.bookingStatus}</Badge>
+                      {t.memberStatus === "cancelled" && <Badge variant="destructive">Cancelled</Badge>}
+                      <span className="text-muted-foreground">{CATEGORY_LABEL[t.category as keyof typeof CATEGORY_LABEL]}</span>
+                      <span className="font-medium">{formatMoney(t.price, t.currency as CurrencyCode)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>

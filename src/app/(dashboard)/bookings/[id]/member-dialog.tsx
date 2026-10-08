@@ -1,5 +1,6 @@
 "use client";
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -14,22 +15,26 @@ import { CURRENCIES, formatMoney, fromMinor, toMinor } from "@/lib/finance/curre
 import {
   CATEGORIES, GENDERS, memberInputSchema, type MemberInput,
 } from "@/lib/validators/booking";
-import type { AgeCategory, Booking, Member } from "@/types/models";
+import type { AgeCategory, Booking, Customer, Member } from "@/types/models";
+import { CustomerPicker } from "./customer-picker";
 
 const selectClass = "border-input bg-background h-9 w-full rounded-md border px-2 text-sm";
 const msg = (m?: string) => (m && /expected|nan/i.test(m) ? "Enter a valid number" : m);
 const Err = ({ m }: { m?: string }) => (m ? <p className="text-destructive text-xs">{msg(m)}</p> : null);
 
 type Source = { id: string; name: string };
+type Chosen = { id: string; name: string; phone: string };
+type Mode = "pick" | "new" | "chosen";
 
 export function MemberDialog({
-  open, onOpenChange, booking, sources, member,
+  open, onOpenChange, booking, sources, member, takenIds,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   booking: Booking;
   sources: Source[];
   member: Member | null;
+  takenIds: string[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -43,6 +48,7 @@ export function MemberDialog({
             booking={booking}
             sources={sources}
             member={member}
+            takenIds={takenIds}
             onDone={() => onOpenChange(false)}
           />
         )}
@@ -52,26 +58,34 @@ export function MemberDialog({
 }
 
 function MemberForm({
-  booking, sources, member, onDone,
-}: { booking: Booking; sources: Source[]; member: Member | null; onDone: () => void }) {
+  booking, sources, member, takenIds, onDone,
+}: {
+  booking: Booking; sources: Source[]; member: Member | null; takenIds: string[]; onDone: () => void;
+}) {
   const [pending, startTransition] = useTransition();
   const another = useRef(false);
   const prevCategory = useRef<AgeCategory>(member?.category ?? "adult");
+  const [mode, setMode] = useState<Mode>(member ? "chosen" : "pick");
+  const [chosen, setChosen] = useState<Chosen | null>(
+    member ? { id: member.customerId ?? "", name: member.name, phone: member.phone } : null,
+  );
 
   const blank = (sourceId = ""): MemberInput => ({
-    name: "", gender: "male", category: "adult", age: "", phone: "",
+    customerId: "", name: "", phone: "", email: "",
+    gender: "male", category: "adult", age: "",
     sourceId, price: fromMinor(booking.rates.adult), note: "",
   });
 
   const {
-    register, control, handleSubmit, reset, setValue, getValues, setFocus,
+    register, control, handleSubmit, reset, setValue, getValues,
     formState: { errors },
   } = useForm<MemberInput>({
     resolver: zodResolver(memberInputSchema),
     defaultValues: member
       ? {
-          name: member.name, gender: member.gender, category: member.category,
-          age: member.age === null ? "" : String(member.age), phone: member.phone,
+          customerId: member.customerId ?? "", name: member.name, phone: member.phone, email: "",
+          gender: member.gender, category: member.category,
+          age: member.age === null ? "" : String(member.age),
           sourceId: member.sourceId, price: fromMinor(member.price), note: member.note,
         }
       : blank(sources.length === 1 ? sources[0].id : ""),
@@ -83,6 +97,22 @@ function MemberForm({
   const custom = Number.isFinite(price) && toMinor(price) !== standard;
   const symbol = CURRENCIES[booking.currency].symbol;
 
+  function clearCustomer() {
+    setValue("customerId", "");
+    setValue("name", "");
+    setValue("phone", "");
+    setValue("email", "");
+    setChosen(null);
+  }
+  function pick(c: Customer) {
+    setValue("customerId", c.id, { shouldValidate: true });
+    setValue("name", c.name);
+    setValue("phone", c.phone ?? "");
+    setValue("email", "");
+    setChosen({ id: c.id, name: c.name, phone: c.phone ?? "" });
+    setMode("chosen");
+  }
+
   // Switching category swaps the price to that category's rate, unless the price was customised
   function onCategoryChange(next: AgeCategory) {
     const current = toMinor(Number(getValues("price")));
@@ -90,20 +120,36 @@ function MemberForm({
     prevCategory.current = next;
   }
 
-  function onSubmit(v: MemberInput) {
+  function submit(v: MemberInput, force = false) {
+    const keepOpen = another.current;
+    another.current = false;
+
     startTransition(async () => {
       const res = member
         ? await updateMember(booking.id, member.id, v)
-        : await addMember(booking.id, v);
-      const keepOpen = another.current;
-      another.current = false;
+        : await addMember(booking.id, v, force);
 
-      if (!res.ok) { toast.error(res.error); return; }
-      toast.success(member ? "Member updated" : `${v.name} added`);
+      if (!res.ok) {
+        if ("duplicate" in res && res.duplicate) {
+          toast.warning(res.error, {
+            duration: 10000,
+            action: {
+              label: "Add anyway",
+              onClick: () => { another.current = keepOpen; submit(v, true); },
+            },
+          });
+        } else {
+          toast.error(res.error);
+        }
+        return;
+      }
+
+      toast.success(member ? "Member updated" : `${chosen?.name || v.name} added`);
       if (keepOpen) {
         prevCategory.current = "adult";
         reset(blank(v.sourceId));
-        setFocus("name");
+        setChosen(null);
+        setMode("pick");
       } else {
         onDone();
       }
@@ -113,11 +159,73 @@ function MemberForm({
   const hasOldSource = member && !sources.some((s) => s.id === member.sourceId);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="mname">Full name</Label>
-        <Input id="mname" autoFocus autoComplete="off" {...register("name")} />
-        <Err m={errors.name?.message} />
+    <form onSubmit={handleSubmit((v) => submit(v))} className="space-y-4">
+      {/* Customer */}
+      <div className="space-y-2 rounded-md border p-3">
+        <Label>Customer</Label>
+
+        {mode === "chosen" && chosen && (
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-medium">{chosen.name}</p>
+              <p className="text-muted-foreground text-xs">
+                {chosen.phone || "No phone"}
+                {!chosen.id && " · not linked to a customer record"}
+              </p>
+              {member && chosen.id && (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  To change name or phone,{" "}
+                  <Link href={`/customers/${chosen.id}`} className="underline" target="_blank">
+                    edit the customer
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+            {!member && (
+              <Button type="button" variant="ghost" size="sm"
+                onClick={() => { clearCustomer(); setMode("pick"); }}>
+                Change
+              </Button>
+            )}
+          </div>
+        )}
+
+        {mode === "pick" && (
+          <>
+            <CustomerPicker takenIds={takenIds} onPick={pick} onNew={() => { clearCustomer(); setMode("new"); }} />
+            <Err m={errors.name?.message} />
+          </>
+        )}
+
+        {mode === "new" && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="mname">Full name</Label>
+              <Input id="mname" autoFocus autoComplete="off" {...register("name")} />
+              <Err m={errors.name?.message} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="mphone">Phone</Label>
+                <Input id="mphone" type="tel" {...register("phone")} />
+                <Err m={errors.phone?.message} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="memail">Email (optional)</Label>
+                <Input id="memail" type="email" {...register("email")} />
+                <Err m={errors.email?.message} />
+              </div>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              A customer record is created automatically. You can add address and ID proofs later.
+            </p>
+            <Button type="button" variant="ghost" size="sm"
+              onClick={() => { clearCustomer(); setMode("pick"); }}>
+              Search existing customers instead
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -143,21 +251,14 @@ function MemberForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="mphone">Phone (optional)</Label>
-          <Input id="mphone" type="tel" {...register("phone")} />
-          <Err m={errors.phone?.message} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="msource">Order source</Label>
-          <select id="msource" className={selectClass} {...register("sourceId")}>
-            <option value="">Select source</option>
-            {hasOldSource && <option value={member!.sourceId}>{member!.sourceName} (inactive)</option>}
-            {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <Err m={errors.sourceId?.message} />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="msource">Order source</Label>
+        <select id="msource" className={selectClass} {...register("sourceId")}>
+          <option value="">Select source</option>
+          {hasOldSource && <option value={member!.sourceId}>{member!.sourceName} (inactive)</option>}
+          {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <Err m={errors.sourceId?.message} />
       </div>
 
       <div className="space-y-2">
