@@ -12,9 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CURRENCIES, CURRENCY_CODES, formatMoney, fromMinor, toMinor } from "@/lib/finance/currency";
+import { CURRENCIES, CURRENCY_CODES, formatMoney, fromMinor, toMinor, type CurrencyCode } from "@/lib/finance/currency";
 import {
-  BASIS_LABEL, PACKAGE_STATUSES, PRICE_BASES, STATUS_LABEL,
+  GROUP_LABEL, GROUP_TYPES, PACKAGE_STATUSES, STATUS_LABEL,
   packageFormSchema, type PackageFormValues,
 } from "@/lib/validators/package";
 import type { TravelPackage } from "@/types/models";
@@ -85,7 +85,7 @@ export function PackageForm({
   const [pending, startTransition] = useTransition();
 
   const {
-    register, control, handleSubmit,
+    register, control, handleSubmit, setValue, getValues,
     formState: { errors },
   } = useForm<PackageFormValues>({
     resolver: zodResolver(packageFormSchema),
@@ -94,9 +94,14 @@ export function PackageForm({
       destination: pkg?.destination ?? "",
       days: pkg?.days ?? 3,
       nights: pkg?.nights ?? 2,
+      groupType: pkg?.groupType ?? "open_group",
+      minPersons: pkg?.minPersons ?? 1,
+      maxPersons: pkg?.maxPersons ?? 0,
       currency: pkg?.price.currency ?? "INR",
       price: pkg ? fromMinor(pkg.price.amount) : 0,
-      priceBasis: pkg?.priceBasis ?? "per_person",
+      extraTiers: (pkg?.priceTiers ?? [])
+        .slice(1)
+        .map((t) => ({ fromPersons: t.fromPersons, price: fromMinor(t.amount) })),
       status: pkg?.status ?? "draft",
       inclusions: (pkg?.inclusions ?? []).map((value) => ({ value })),
       exclusions: (pkg?.exclusions ?? []).map((value) => ({ value })),
@@ -105,11 +110,33 @@ export function PackageForm({
   });
 
   const itin = useFieldArray({ control, name: "itinerary" });
-  const currency = useWatch({ control, name: "currency" });
+  const tiers = useFieldArray({ control, name: "extraTiers" });
+  const currency = useWatch({ control, name: "currency" }) as CurrencyCode;
   const price = useWatch({ control, name: "price" });
+  const minP = useWatch({ control, name: "minPersons" });
+  const extra = useWatch({ control, name: "extraTiers" });
+  const groupType = useWatch({ control, name: "groupType" });
 
   const rate = rates[currency];
-  const showApprox = currency !== "INR" && rate && Number.isFinite(price) && price > 0;
+
+  function onGroupTypeChange(t: string) {
+    if (t === "couple") {
+      setValue("minPersons", 2);
+      setValue("maxPersons", 2);
+      tiers.replace([]);
+    } else if (t === "open_group") {
+      setValue("minPersons", 1);
+      setValue("maxPersons", 0);
+    } else if (getValues("minPersons") < 2) {
+      setValue("minPersons", 2);
+    }
+  }
+
+  // Live preview of what each group size pays
+  const preview = [
+    { from: minP, price },
+    ...(extra ?? []).map((t) => ({ from: t.fromPersons, price: t.price })),
+  ].filter((r) => Number.isFinite(r.from) && r.from > 0 && Number.isFinite(r.price) && r.price > 0);
 
   function onSubmit(v: PackageFormValues) {
     startTransition(async () => {
@@ -157,47 +184,148 @@ export function PackageForm({
         </CardContent>
       </Card>
 
+      {/* Group size */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Group size</CardTitle>
+          <CardDescription>
+            Couple packages are fixed at 2. For a fixed group such as 12 members, set the same
+            number in both boxes. Strangers trips are open groups where each person joins individually.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2 sm:col-span-3">
+            <Label htmlFor="groupType">Package type</Label>
+            <select
+              id="groupType"
+              className={selectClass}
+              {...register("groupType", { onChange: (e) => onGroupTypeChange(e.target.value) })}
+            >
+              {GROUP_TYPES.map((g) => <option key={g} value={g}>{GROUP_LABEL[g]}</option>)}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="minPersons">Minimum persons</Label>
+            <Input
+              id="minPersons" type="number" min={1}
+              disabled={groupType === "couple"}
+              {...register("minPersons", { valueAsNumber: true })}
+            />
+            <Err m={errors.minPersons?.message} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="maxPersons">Maximum persons</Label>
+            <Input
+              id="maxPersons" type="number" min={0}
+              disabled={groupType === "couple"}
+              {...register("maxPersons", { valueAsNumber: true })}
+            />
+            <p className="text-muted-foreground text-xs">0 means no limit.</p>
+            <Err m={errors.maxPersons?.message} />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Pricing */}
       <Card>
         <CardHeader>
           <CardTitle>Pricing and status</CardTitle>
           <CardDescription>
-            This is the starting price. A booking can still be agreed at a different amount.
+            Prices are per person. A booking can still be agreed at a different amount.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="currency">Currency</Label>
-            <select id="currency" className={selectClass} {...register("currency")}>
-              {CURRENCY_CODES.map((c) => (
-                <option key={c} value={c}>{c} ({CURRENCIES[c].name})</option>
-              ))}
-            </select>
-            <Err m={errors.currency?.message} />
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="currency">Currency</Label>
+              <select id="currency" className={selectClass} {...register("currency")}>
+                {CURRENCY_CODES.map((c) => (
+                  <option key={c} value={c}>{c} ({CURRENCIES[c].name})</option>
+                ))}
+              </select>
+              <Err m={errors.currency?.message} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="price">
+                Price per person ({Number.isFinite(minP) ? minP : "…"} persons and above)
+              </Label>
+              <Input id="price" type="number" step="0.01" min={0} {...register("price", { valueAsNumber: true })} />
+              <Err m={errors.price?.message} />
+              {currency !== "INR" && rate && Number.isFinite(price) && price > 0 && (
+                <p className="text-muted-foreground text-xs">
+                  ≈ {formatMoney(Math.round(toMinor(price) * rate), "INR")} per person at your default rate
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <select id="status" className={selectClass} {...register("status")}>
+                {PACKAGE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+              </select>
+              <p className="text-muted-foreground text-xs">Only Active packages can be booked.</p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="price">Price</Label>
-            <Input id="price" type="number" step="0.01" min={0} {...register("price", { valueAsNumber: true })} />
-            <Err m={errors.price?.message} />
-            {showApprox && (
+
+          {/* Group rates */}
+          <div className="space-y-3 rounded-md border p-3">
+            <div>
+              <p className="text-sm font-medium">Group rates (optional)</p>
               <p className="text-muted-foreground text-xs">
-                ≈ {formatMoney(Math.round(toMinor(price) * rate), "INR")} at your default rate
+                Lower the per-person price for bigger groups. The new price applies to everyone in
+                the booking. Add them in increasing order.
               </p>
+            </div>
+
+            {groupType === "couple" ? (
+              <p className="text-muted-foreground text-xs">Not available for couple packages.</p>
+            ) : (
+              <>
+                {tiers.fields.map((f, i) => (
+                  <div key={f.id} className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm">From</span>
+                      <Input
+                        type="number" min={2} className="w-24"
+                        {...register(`extraTiers.${i}.fromPersons`, { valueAsNumber: true })}
+                      />
+                      <span className="text-sm">persons, price per person</span>
+                      <Input
+                        type="number" step="0.01" min={0} className="w-36"
+                        {...register(`extraTiers.${i}.price`, { valueAsNumber: true })}
+                      />
+                      <Button type="button" variant="ghost" size="icon" aria-label="Remove rate"
+                        onClick={() => tiers.remove(i)}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                    <Err m={errors.extraTiers?.[i]?.fromPersons?.message} />
+                    <Err m={errors.extraTiers?.[i]?.price?.message} />
+                  </div>
+                ))}
+                <Button
+                  type="button" variant="outline" size="sm"
+                  disabled={tiers.fields.length >= 6}
+                  onClick={() => tiers.append({ fromPersons: (Number(minP) || 1) + 2, price: 0 })}
+                >
+                  <Plus className="mr-1 size-4" /> Add group rate
+                </Button>
+              </>
             )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="basis">Price is</Label>
-            <select id="basis" className={selectClass} {...register("priceBasis")}>
-              {PRICE_BASES.map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
-            <select id="status" className={selectClass} {...register("status")}>
-              {PACKAGE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-            </select>
-            <p className="text-muted-foreground text-xs">Only Active packages can be booked.</p>
-          </div>
+
+          {preview.length > 0 && (
+            <div className="bg-muted rounded-md p-3 text-sm">
+              <p className="mb-1 font-medium">What customers will pay</p>
+              <ul className="space-y-1">
+                {preview.map((r, i) => (
+                  <li key={i} className="text-muted-foreground">
+                    {r.from}+ persons: {formatMoney(toMinor(r.price), currency)} per person
+                    {" "}({formatMoney(toMinor(r.price) * r.from, currency)} for {r.from})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
 

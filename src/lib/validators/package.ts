@@ -9,14 +9,11 @@ export const STATUS_LABEL: Record<(typeof PACKAGE_STATUSES)[number], string> = {
   archived: "Archived",
 };
 
-export const PRICE_BASES = ["per_person", "per_booking"] as const;
-export const BASIS_LABEL: Record<(typeof PRICE_BASES)[number], string> = {
-  per_person: "Per person",
-  per_booking: "Per booking (flat)",
-};
-export const BASIS_SHORT: Record<(typeof PRICE_BASES)[number], string> = {
-  per_person: "/ person",
-  per_booking: "/ booking",
+export const GROUP_TYPES = ["couple", "fixed_group", "open_group"] as const;
+export const GROUP_LABEL: Record<(typeof GROUP_TYPES)[number], string> = {
+  couple: "Couple package",
+  fixed_group: "Fixed group",
+  open_group: "Open group (strangers)",
 };
 
 const common = {
@@ -24,11 +21,21 @@ const common = {
   destination: z.string().trim().min(2, "Enter a destination").max(80, "Max 80 characters"),
   days: z.number().int().min(1, "At least 1 day").max(60, "Max 60 days"),
   nights: z.number().int().min(0, "Cannot be negative").max(60, "Max 60 nights"),
+  groupType: z.enum(GROUP_TYPES),
+  minPersons: z.number().int("Whole number").min(1, "At least 1").max(500, "Max 500"),
+  maxPersons: z.number().int("Whole number").min(0, "Cannot be negative").max(500, "Max 500"),
   currency: z
     .string()
     .refine((c) => CURRENCY_CODES.includes(c as CurrencyCode), "Choose a currency"),
   price: z.number().min(0, "Price cannot be negative").max(1_000_000_000, "Price is too large"),
-  priceBasis: z.enum(PRICE_BASES),
+  extraTiers: z
+    .array(
+      z.object({
+        fromPersons: z.number().int("Whole number").min(2, "Enter persons"),
+        price: z.number().min(0.01, "Enter a price").max(1_000_000_000, "Price is too large"),
+      }),
+    )
+    .max(6, "Max 6 group rates"),
   status: packageStatusSchema,
 };
 
@@ -37,10 +44,40 @@ const dayItem = z.object({
   description: z.string().trim().max(1000, "Max 1000 characters"),
 });
 
-const nightsRule = {
-  check: (d: { days: number; nights: number }) => d.nights <= d.days,
-  opts: { path: ["nights"], message: "Nights can't exceed days" },
+type Rules = {
+  days: number;
+  nights: number;
+  groupType: string;
+  minPersons: number;
+  maxPersons: number;
+  extraTiers: { fromPersons: number }[];
 };
+type Ctx = {
+  addIssue: (i: { code: "custom"; path: (string | number)[]; message: string }) => void;
+};
+
+function rules(d: Rules, ctx: Ctx) {
+  const issue = (path: (string | number)[], message: string) =>
+    ctx.addIssue({ code: "custom", path, message });
+
+  if (d.nights > d.days) issue(["nights"], "Nights can't exceed days");
+  if (d.maxPersons !== 0 && d.maxPersons < d.minPersons) {
+    issue(["maxPersons"], "Maximum can't be below the minimum");
+  }
+  if (d.groupType === "couple" && (d.minPersons !== 2 || d.maxPersons !== 2)) {
+    issue(["minPersons"], "A couple package is exactly 2 persons");
+  }
+
+  let prev = d.minPersons;
+  d.extraTiers.forEach((t, i) => {
+    if (t.fromPersons <= prev) {
+      issue(["extraTiers", i, "fromPersons"], `Must be above ${prev} (rates go in increasing order)`);
+    } else if (d.maxPersons !== 0 && t.fromPersons > d.maxPersons) {
+      issue(["extraTiers", i, "fromPersons"], "Above the maximum persons");
+    }
+    prev = t.fromPersons;
+  });
+}
 
 /** What the form edits. Lists are objects so useFieldArray can manage them. */
 export const packageFormSchema = z
@@ -50,7 +87,7 @@ export const packageFormSchema = z
     exclusions: z.array(z.object({ value: z.string().trim().max(200, "Max 200 characters") })).max(30),
     itinerary: z.array(dayItem).max(60),
   })
-  .refine(nightsRule.check, nightsRule.opts);
+  .superRefine((d, ctx) => rules(d, ctx));
 export type PackageFormValues = z.infer<typeof packageFormSchema>;
 
 /** What the server action receives (plain string lists) */
@@ -61,5 +98,5 @@ export const packageInputSchema = z
     exclusions: z.array(z.string().trim().min(1).max(200)).max(30),
     itinerary: z.array(dayItem).max(60),
   })
-  .refine(nightsRule.check, nightsRule.opts);
+  .superRefine((d, ctx) => rules(d, ctx));
 export type PackageInput = z.infer<typeof packageInputSchema>;

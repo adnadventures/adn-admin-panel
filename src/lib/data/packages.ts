@@ -3,28 +3,37 @@ import { adminDb } from "@/lib/firebase/admin";
 import { COL, serializeDoc } from "@/lib/firestore/helpers";
 import type { TravelPackage } from "@/types/models";
 
-const newestFirst = (a: TravelPackage, b: TravelPackage) =>
-  b.createdAt.localeCompare(a.createdAt);
+/** Fills in the new fields for packages saved before group pricing existed */
+function normalize(p: TravelPackage): TravelPackage {
+  const min = p.minPersons ?? 1;
+  return {
+    ...p,
+    groupType: p.groupType ?? "open_group",
+    minPersons: min,
+    maxPersons: p.maxPersons ?? 0,
+    priceTiers: p.priceTiers?.length ? p.priceTiers : [{ fromPersons: min, amount: p.price.amount }],
+  };
+}
+
+const read = (d: FirebaseFirestore.DocumentSnapshot) => normalize(serializeDoc<TravelPackage>(d));
 
 export async function listPackages(): Promise<TravelPackage[]> {
   const snap = await adminDb.collection(COL.packages).where("isDeleted", "==", false).get();
-  return snap.docs.map((d) => serializeDoc<TravelPackage>(d)).sort(newestFirst);
+  return snap.docs.map(read).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** For the booking form in Phase 6 */
+/** For the booking form in the next phase */
 export async function listActivePackages(): Promise<TravelPackage[]> {
   const snap = await adminDb
     .collection(COL.packages)
     .where("isDeleted", "==", false)
     .where("status", "==", "active")
     .get();
-  return snap.docs
-    .map((d) => serializeDoc<TravelPackage>(d))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return snap.docs.map(read).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getPackage(id: string): Promise<TravelPackage | null> {
   const snap = await adminDb.collection(COL.packages).doc(id).get();
   if (!snap.exists || snap.data()?.isDeleted) return null;
-  return serializeDoc<TravelPackage>(snap);
+  return read(snap);
 }

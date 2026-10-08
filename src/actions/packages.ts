@@ -10,19 +10,27 @@ import {
   packageInputSchema, packageStatusSchema, type PackageInput,
 } from "@/lib/validators/package";
 import type { Role } from "@/types/roles";
+import { FieldValue } from "firebase-admin/firestore";
 
 type Result = { ok: true; id: string } | { ok: false; error: string };
 const MANAGE: Role[] = ["admin", "manager"];
 
 function toDoc(d: PackageInput) {
+  const base = toMinor(d.price);
   return {
     name: d.name,
     searchName: toSearchName(d.name),
     destination: d.destination,
     days: d.days,
     nights: d.nights,
-    price: { currency: d.currency, amount: toMinor(d.price) },
-    priceBasis: d.priceBasis,
+    groupType: d.groupType,
+    minPersons: d.minPersons,
+    maxPersons: d.maxPersons,
+    price: { currency: d.currency, amount: base }, // base per-person price
+    priceTiers: [
+      { fromPersons: d.minPersons, amount: base },
+      ...d.extraTiers.map((t) => ({ fromPersons: t.fromPersons, amount: toMinor(t.price) })),
+    ],
     inclusions: d.inclusions,
     exclusions: d.exclusions,
     itinerary: d.itinerary.map((x, i) => ({ day: i + 1, title: x.title, description: x.description })),
@@ -85,7 +93,7 @@ export async function updatePackage(id: string, input: unknown): Promise<Result>
   }
 
   const batch = adminDb.batch();
-  batch.update(ref, { ...doc, ...updateMeta(user) });
+  batch.update(ref, { ...doc, priceBasis: FieldValue.delete(), ...updateMeta(user) });
   batch.set(
     adminDb.collection(COL.auditLogs).doc(),
     auditEntry(user, "package.update", "package", id, {

@@ -44,7 +44,10 @@ export type Customer = Meta & {
 
 export type PackageStatus = "draft" | "active" | "archived";
 
-export type PriceBasis = "per_person" | "per_booking";
+export type GroupType = "couple" | "fixed_group" | "open_group";
+
+// amount = per-person price in minor units, applies from `fromPersons` upward
+export type PriceTier = { fromPersons: number; amount: number };
 
 export type TravelPackage = Meta & {
   name: string;
@@ -52,8 +55,11 @@ export type TravelPackage = Meta & {
   destination: string;
   days: number;
   nights: number;
-  price: Money;
-  priceBasis: PriceBasis;
+  groupType: GroupType;
+  minPersons: number;
+  maxPersons: number;     // 0 = no limit
+  price: Money;           // base per-person price (the first tier)
+  priceTiers: PriceTier[]; // sorted, first tier starts at minPersons
   inclusions: string[];
   exclusions: string[];
   itinerary: { day: number; title: string; description: string }[];
