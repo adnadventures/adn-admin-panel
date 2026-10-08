@@ -24,14 +24,22 @@ export type OrderSource = Meta & {
   notes?: string;
 };
 
+export type IdType =
+  | "aadhaar" | "pan" | "passport" | "voter_id" | "driving_license" | "other";
+
+// What the browser sees. The encrypted number stays on the server.
+export type CustomerIdDoc = { id: string; type: IdType; last4: string };
+
 export type Customer = Meta & {
   name: string;
   searchName: string;
-  phone?: string;
-  email?: string;
-  country?: string;
-  address?: string;
-  notes?: string;
+  phone: string;
+  phoneDigits: string; // last 10 digits, for search and duplicate checks
+  email: string;
+  country: string;
+  address: string;
+  notes: string;
+  idDocs: CustomerIdDoc[];
 };
 
 export type PackageStatus = "draft" | "active" | "archived";
