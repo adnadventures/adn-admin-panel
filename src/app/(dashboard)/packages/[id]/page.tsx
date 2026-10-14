@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
-import { Check, X } from "lucide-react";
+import Image from "next/image";
+import { Check, MessageCircle, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/session";
 import { getPackage } from "@/lib/data/packages";
 import { formatMoney } from "@/lib/finance/currency";
@@ -31,13 +33,30 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
         pkg.price.currency !== "INR" && settings.fx.rates[pkg.price.currency]
             ? Math.round(pkg.price.amount * settings.fx.rates[pkg.price.currency])
             : null;
+    const shareText = [
+        `*${pkg.name}*`,
+        `${pkg.destination} | ${pkg.days} days / ${pkg.nights} nights`,
+        `Starting at ${formatMoney(pkg.price.amount, pkg.price.currency)} per person`,
+        pkg.inclusions.length ? `Includes:\n${pkg.inclusions.map((item) => `• ${item}`).join("\n")}` : "",
+        pkg.exclusions.length ? `Excludes:\n${pkg.exclusions.map((item) => `• ${item}`).join("\n")}` : "",
+        pkg.roomImages.length ? `Room images:\n${pkg.roomImages.join("\n")}` : "",
+        pkg.transportImages.length ? `Bus, van, and car images:\n${pkg.transportImages.join("\n")}` : "",
+    ].filter(Boolean).join("\n\n");
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
     return (
         <>
             <PageHeader
                 title={pkg.name}
                 description={`${pkg.destination} · ${pkg.days}D / ${pkg.nights}N`}
-                actions={user.role !== "staff" ? <PackageActions pkg={pkg} /> : undefined}
+                actions={
+                    <>
+                        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}>
+                            <MessageCircle className="mr-2 size-4" /> Share on WhatsApp
+                        </a>
+                        {user.role !== "staff" && <PackageActions pkg={pkg} />}
+                    </>
+                }
             />
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -116,6 +135,36 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                                     </li>
                                 ))}
                             </ul>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader><CardTitle>Room images</CardTitle></CardHeader>
+                    <CardContent>
+                        {pkg.roomImages.length === 0 ? (
+                            <p className="text-muted-foreground text-sm">None added.</p>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                {pkg.roomImages.map((src, index) => (
+                                    <Image key={src} src={src} alt={`${pkg.name} room ${index + 1}`} width={640} height={360} unoptimized className="aspect-video w-full rounded object-cover" />
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader><CardTitle>Bus, van, and car images</CardTitle></CardHeader>
+                    <CardContent>
+                        {pkg.transportImages.length === 0 ? (
+                            <p className="text-muted-foreground text-sm">None added.</p>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                {pkg.transportImages.map((src, index) => (
+                                    <Image key={src} src={src} alt={`${pkg.name} transport ${index + 1}`} width={640} height={360} unoptimized className="aspect-video w-full rounded object-cover" />
+                                ))}
+                            </div>
                         )}
                     </CardContent>
                 </Card>

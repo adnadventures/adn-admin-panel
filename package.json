@@ -13,6 +13,7 @@
     "emulators": "firebase emulators:start --only firestore"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1151.0",
     "@base-ui/react": "^1.8.0",
     "@hookform/resolvers": "^5.9.1",
     "@tanstack/react-table": "^8.21.3",

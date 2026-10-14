@@ -21,8 +21,8 @@ const msg = (m?: string) => (m && /expected|nan/i.test(m) ? "Enter a valid numbe
 const Err = ({ m }: { m?: string }) => (m ? <p className="text-destructive text-xs">{msg(m)}</p> : null);
 
 export function BookingForm({
-  packages, booking,
-}: { packages: TravelPackage[]; booking: Booking | null }) {
+  packages, booking, defaultCloseDate = "",
+}: { packages: TravelPackage[]; booking: Booking | null; defaultCloseDate?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -38,8 +38,8 @@ export function BookingForm({
           travelStart: booking.travelStart,
           travelEnd: booking.travelEnd,
           closeDate: booking.closeDate,
-          minPersons: booking.minPersons,
-          maxPersons: booking.maxPersons,
+          minPersons: booking.maxPersons > 0 ? booking.maxPersons : booking.minPersons,
+          maxPersons: booking.maxPersons > 0 ? booking.maxPersons : booking.minPersons,
           adultPrice: fromMinor(booking.rates.adult),
           childPrice: fromMinor(booking.rates.child),
           seniorPrice: fromMinor(booking.rates.senior),
@@ -47,7 +47,7 @@ export function BookingForm({
           notes: booking.notes,
         }
       : {
-          packageId: "", title: "", travelStart: "", travelEnd: "", closeDate: "",
+          packageId: "", title: "", travelStart: "", travelEnd: "", closeDate: defaultCloseDate,
           minPersons: 1, maxPersons: 0, adultPrice: 0, childPrice: 0, seniorPrice: 0,
           repriceExisting: false, notes: "",
         },
@@ -61,9 +61,10 @@ export function BookingForm({
   function onPackageChange(id: string) {
     const p = packages.find((x) => x.id === id);
     if (!p) return;
-    const adult = fromMinor(pricePerPerson(p.priceTiers, p.minPersons));
-    setValue("minPersons", p.minPersons);
-    setValue("maxPersons", p.maxPersons);
+    const persons = p.maxPersons > 0 ? p.maxPersons : p.minPersons;
+    const adult = fromMinor(pricePerPerson(p.priceTiers, persons));
+    setValue("minPersons", persons);
+    setValue("maxPersons", persons);
     setValue("adultPrice", adult);
     setValue("childPrice", adult);
     setValue("seniorPrice", adult);
@@ -72,7 +73,10 @@ export function BookingForm({
 
   function onSubmit(v: BookingInput) {
     startTransition(async () => {
-      const res = booking ? await updateBooking(booking.id, v) : await createBooking(v);
+      const input = { ...v, maxPersons: v.minPersons };
+      const res = booking
+        ? await updateBooking(booking.id, input)
+        : await createBooking(input);
       if (res.ok) {
         toast.success(booking ? "Booking updated" : "Booking created");
         router.push(`/bookings/${res.id}`);
@@ -131,19 +135,13 @@ export function BookingForm({
       <Card>
         <CardHeader>
           <CardTitle>Group size</CardTitle>
-          <CardDescription>Copied from the package. You can change them for this booking.</CardDescription>
+          <CardDescription>Set the number of persons for this booking.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="minPersons">Minimum members to run</Label>
+            <Label htmlFor="minPersons">Number of persons</Label>
             <Input id="minPersons" type="number" min={1} {...register("minPersons", { valueAsNumber: true })} />
             <Err m={errors.minPersons?.message} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="maxPersons">Maximum members (slots)</Label>
-            <Input id="maxPersons" type="number" min={0} {...register("maxPersons", { valueAsNumber: true })} />
-            <p className="text-muted-foreground text-xs">0 means no limit.</p>
-            <Err m={errors.maxPersons?.message} />
           </div>
         </CardContent>
       </Card>

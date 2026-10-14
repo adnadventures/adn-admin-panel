@@ -12,6 +12,8 @@ function normalize(p: TravelPackage): TravelPackage {
     minPersons: min,
     maxPersons: p.maxPersons ?? 0,
     priceTiers: p.priceTiers?.length ? p.priceTiers : [{ fromPersons: min, amount: p.price.amount }],
+    roomImages: p.roomImages ?? [],
+    transportImages: p.transportImages ?? [],
   };
 }
 

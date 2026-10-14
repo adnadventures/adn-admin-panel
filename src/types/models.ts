@@ -62,6 +62,8 @@ export type TravelPackage = Meta & {
   priceTiers: PriceTier[]; // sorted, first tier starts at minPersons
   inclusions: string[];
   exclusions: string[];
+  roomImages: string[];
+  transportImages: string[];
   itinerary: { day: number; title: string; description: string }[];
   status: PackageStatus;
 };

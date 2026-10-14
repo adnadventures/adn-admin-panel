@@ -1,12 +1,14 @@
 "use client";
+import Image from "next/image";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFieldArray, useForm, useWatch, type Control, type UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { createPackage, updatePackage } from "@/actions/packages";
+import { createPackage, updatePackage, uploadPackageImage } from "@/actions/packages";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -77,6 +79,99 @@ function ListField({
   );
 }
 
+function ImageListField({
+  control, name, title, description, addLabel,
+}: {
+  control: Control<PackageFormValues>;
+  name: "roomImages" | "transportImages";
+  title: string;
+  description: string;
+  addLabel: string;
+}) {
+  const { fields, append, remove } = useFieldArray({ control, name });
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function uploadImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (fields.length + files.length > 20) {
+      toast.error("You can add up to 20 images in this section");
+      return;
+    }
+
+    setUploading(true);
+    let uploaded = 0;
+    try {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.set("file", file);
+        const result = await uploadPackageImage(formData);
+        if (!result.ok) {
+          toast.error(`${file.name}: ${result.error}`);
+          continue;
+        }
+        append({ url: result.url });
+        uploaded++;
+      }
+      if (uploaded > 0) toast.success(`${uploaded} image${uploaded === 1 ? "" : "s"} uploaded`);
+    } catch {
+      toast.error("Image upload failed. Try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-2">
+          <input
+            ref={fileInput}
+            id={`${name}-upload`}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="hidden"
+            disabled={uploading || fields.length >= 20}
+            onChange={uploadImages}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label={addLabel}
+            disabled={uploading || fields.length >= 20}
+            onClick={() => fileInput.current?.click()}
+          >
+            <Upload className="size-4" /> {uploading ? "Uploading photos…" : "Upload photos"}
+          </Button>
+          <p className="text-muted-foreground text-xs">JPEG, PNG, or WebP. Up to 8 MB per image, 20 images per section.</p>
+        </div>
+        {fields.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {fields.map((field, index) => (
+              <figure key={field.id} className="relative min-w-0">
+                <Image src={field.url} alt={`${title} ${index + 1}`} width={480} height={320} unoptimized className="aspect-video w-full rounded object-cover" />
+                <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate">{title} {index + 1}</span>
+                  <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${title.toLowerCase()} ${index + 1}`} onClick={() => remove(index)}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ---------- main form ---------- */
 export function PackageForm({
   pkg, rates,
@@ -105,6 +200,8 @@ export function PackageForm({
       status: pkg?.status ?? "draft",
       inclusions: (pkg?.inclusions ?? []).map((value) => ({ value })),
       exclusions: (pkg?.exclusions ?? []).map((value) => ({ value })),
+      roomImages: (pkg?.roomImages ?? []).map((url) => ({ url })),
+      transportImages: (pkg?.transportImages ?? []).map((url) => ({ url })),
       itinerary: (pkg?.itinerary ?? []).map(({ title, description }) => ({ title, description })),
     },
   });
@@ -144,6 +241,8 @@ export function PackageForm({
         ...v,
         inclusions: v.inclusions.map((x) => x.value).filter(Boolean),
         exclusions: v.exclusions.map((x) => x.value).filter(Boolean),
+        roomImages: v.roomImages.map((x) => x.url).filter(Boolean),
+        transportImages: v.transportImages.map((x) => x.url).filter(Boolean),
       };
       const res = pkg ? await updatePackage(pkg.id, payload) : await createPackage(payload);
       if (res.ok) {
@@ -338,6 +437,16 @@ export function PackageForm({
         control={control} register={register} name="exclusions"
         title="Exclusions" description="What the customer pays for separately."
         placeholder="e.g. Flights, visa fees"
+      />
+      <ImageListField
+        control={control} name="roomImages"
+        title="Room images" description="Add public image links for the accommodation."
+        addLabel="Add room image"
+      />
+      <ImageListField
+        control={control} name="transportImages"
+        title="Transport images" description="Add public image links for the bus, van, or car."
+        addLabel="Add transport image"
       />
 
       {/* Itinerary */}

@@ -43,6 +43,10 @@ const dayItem = z.object({
   title: z.string().trim().min(1, "Add a title for each day").max(100, "Max 100 characters"),
   description: z.string().trim().max(1000, "Max 1000 characters"),
 });
+const imageUrl = z.string().trim().url("Enter a valid image URL").max(2048, "URL is too long")
+  .refine((value) => /^https?:\/\//i.test(value), "Use a public HTTP or HTTPS URL");
+const optionalImageUrl = z.string().trim().max(2048, "URL is too long")
+  .refine((value) => value === "" || imageUrl.safeParse(value).success, "Enter a valid public image URL");
 
 type Rules = {
   days: number;
@@ -85,6 +89,8 @@ export const packageFormSchema = z
     ...common,
     inclusions: z.array(z.object({ value: z.string().trim().max(200, "Max 200 characters") })).max(30),
     exclusions: z.array(z.object({ value: z.string().trim().max(200, "Max 200 characters") })).max(30),
+    roomImages: z.array(z.object({ url: optionalImageUrl })).max(20, "Max 20 room images"),
+    transportImages: z.array(z.object({ url: optionalImageUrl })).max(20, "Max 20 transport images"),
     itinerary: z.array(dayItem).max(60),
   })
   .superRefine((d, ctx) => rules(d, ctx));
@@ -96,6 +102,8 @@ export const packageInputSchema = z
     ...common,
     inclusions: z.array(z.string().trim().min(1).max(200)).max(30),
     exclusions: z.array(z.string().trim().min(1).max(200)).max(30),
+    roomImages: z.array(imageUrl).max(20, "Max 20 room images"),
+    transportImages: z.array(imageUrl).max(20, "Max 20 transport images"),
     itinerary: z.array(dayItem).max(60),
   })
   .superRefine((d, ctx) => rules(d, ctx));
