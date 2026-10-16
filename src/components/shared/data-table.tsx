@@ -52,7 +52,7 @@ export function DataTable<T>({
             className="pl-9"
           />
         </div>
-        {toolbar}
+        {toolbar && <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">{toolbar}</div>}
       </div>
 
       <div className="bg-card overflow-x-auto rounded-lg border">
@@ -100,11 +100,11 @@ export function DataTable<T>({
         </Table>
       </div>
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex flex-col items-start justify-between gap-3 text-sm sm:flex-row sm:items-center">
         <span className="text-muted-foreground">
           {table.getFilteredRowModel().rows.length} total
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
           <Button
             variant="outline" size="icon" aria-label="Previous page"
             onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}

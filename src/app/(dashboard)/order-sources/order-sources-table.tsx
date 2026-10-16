@@ -89,15 +89,15 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                             Add your own, or start with common ones like Website, Instagram,
                             WhatsApp and Walk-in. You can edit them afterwards.
                         </p>
-                        <div className="flex gap-2">
-                            <Button variant="outline" disabled={seeding}
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                            <Button className="w-full sm:w-auto" variant="outline" disabled={seeding}
                                 onClick={() => startSeed(async () => {
                                     const res = await seedOrderSources();
                                     if (!res.ok) toast.error(res.error);
                                 })}>
                                 <Sparkles className="mr-2 size-4" /> {seeding ? "Adding…" : "Add common sources"}
                             </Button>
-                            <Button onClick={openCreate}><Plus className="mr-2 size-4" /> Add source</Button>
+                            <Button className="w-full sm:w-auto" onClick={openCreate}><Plus className="mr-2 size-4" /> Add source</Button>
                         </div>
                     </CardContent>
                 </Card>

@@ -47,6 +47,24 @@ const imageUrl = z.string().trim().url("Enter a valid image URL").max(2048, "URL
   .refine((value) => /^https?:\/\//i.test(value), "Use a public HTTP or HTTPS URL");
 const optionalImageUrl = z.string().trim().max(2048, "URL is too long")
   .refine((value) => value === "" || imageUrl.safeParse(value).success, "Enter a valid public image URL");
+const phoneNumber = z.string().trim().max(20, "Max 20 characters")
+  .refine((value) => value === "" || /^\+?[0-9\s-]{7,20}$/.test(value), "Enter a valid phone number");
+
+const listingFormSchema = z.object({
+  name: z.string().trim().max(100, "Max 100 characters"),
+  phone: phoneNumber,
+  photos: z.array(z.object({ url: optionalImageUrl })).max(20, "Max 20 photos per listing"),
+}).superRefine((listing, ctx) => {
+  if ((listing.name || listing.phone || listing.photos.length > 0) && listing.name.length < 2) {
+    ctx.addIssue({ code: "custom", path: ["name"], message: "Enter a name" });
+  }
+});
+
+const listingInputSchema = z.object({
+  name: z.string().trim().min(2, "Enter a name").max(100, "Max 100 characters"),
+  phone: phoneNumber,
+  photos: z.array(imageUrl).max(20, "Max 20 photos per listing"),
+});
 
 type Rules = {
   days: number;
@@ -89,8 +107,8 @@ export const packageFormSchema = z
     ...common,
     inclusions: z.array(z.object({ value: z.string().trim().max(200, "Max 200 characters") })).max(30),
     exclusions: z.array(z.object({ value: z.string().trim().max(200, "Max 200 characters") })).max(30),
-    roomImages: z.array(z.object({ url: optionalImageUrl })).max(20, "Max 20 room images"),
-    transportImages: z.array(z.object({ url: optionalImageUrl })).max(20, "Max 20 transport images"),
+    rooms: z.array(listingFormSchema).max(20, "Max 20 rooms"),
+    travelProviders: z.array(listingFormSchema).max(20, "Max 20 travel providers"),
     itinerary: z.array(dayItem).max(60),
   })
   .superRefine((d, ctx) => rules(d, ctx));
@@ -102,8 +120,8 @@ export const packageInputSchema = z
     ...common,
     inclusions: z.array(z.string().trim().min(1).max(200)).max(30),
     exclusions: z.array(z.string().trim().min(1).max(200)).max(30),
-    roomImages: z.array(imageUrl).max(20, "Max 20 room images"),
-    transportImages: z.array(imageUrl).max(20, "Max 20 transport images"),
+    rooms: z.array(listingInputSchema).max(20, "Max 20 rooms"),
+    travelProviders: z.array(listingInputSchema).max(20, "Max 20 travel providers"),
     itinerary: z.array(dayItem).max(60),
   })
   .superRefine((d, ctx) => rules(d, ctx));

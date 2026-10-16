@@ -91,7 +91,7 @@ export function SettingsForm({ initial }: { initial: AppSettings }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="flex items-center justify-between rounded-md border p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
             <div>
               <p className="text-sm font-medium">Charge GST by default</p>
               <p className="text-muted-foreground text-xs">New invoices start with GST on or off.</p>

@@ -4,7 +4,9 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useFieldArray, useForm, useWatch, type Control, type UseFormRegister } from "react-hook-form";
+import {
+  useFieldArray, useForm, useWatch, type Control, type FieldErrors, type UseFormRegister,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowDown, ArrowUp, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +22,7 @@ import {
   packageFormSchema, type PackageFormValues,
 } from "@/lib/validators/package";
 import type { TravelPackage } from "@/types/models";
+import { SharePhotosButton } from "./[id]/share-photos-button";
 
 const selectClass = "border-input bg-background h-9 w-full rounded-md border px-2 text-sm";
 
@@ -79,14 +82,17 @@ function ListField({
   );
 }
 
-function ImageListField({
-  control, name, title, description, addLabel,
+type ListingFieldName = "rooms" | "travelProviders";
+type ListingNamePath = `rooms.${number}.name` | `travelProviders.${number}.name`;
+type ListingPhonePath = `rooms.${number}.phone` | `travelProviders.${number}.phone`;
+type ListingPhotosPath = `rooms.${number}.photos` | `travelProviders.${number}.photos`;
+
+function ListingPhotosField({
+  control, name, label,
 }: {
   control: Control<PackageFormValues>;
-  name: "roomImages" | "transportImages";
-  title: string;
-  description: string;
-  addLabel: string;
+  name: ListingPhotosPath;
+  label: string;
 }) {
   const { fields, append, remove } = useFieldArray({ control, name });
   const fileInput = useRef<HTMLInputElement>(null);
@@ -96,7 +102,7 @@ function ImageListField({
     const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
     if (fields.length + files.length > 20) {
-      toast.error("You can add up to 20 images in this section");
+      toast.error("You can add up to 20 photos for this listing");
       return;
     }
 
@@ -123,50 +129,108 @@ function ImageListField({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-2">
-          <input
-            ref={fileInput}
-            id={`${name}-upload`}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            className="hidden"
-            disabled={uploading || fields.length >= 20}
-            onChange={uploadImages}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={addLabel}
-            disabled={uploading || fields.length >= 20}
-            onClick={() => fileInput.current?.click()}
-          >
-            <Upload className="size-4" /> {uploading ? "Uploading photos…" : "Upload photos"}
-          </Button>
-          <p className="text-muted-foreground text-xs">JPEG, PNG, or WebP. Up to 8 MB per image, 20 images per section.</p>
-        </div>
-        {fields.length > 0 && (
+    <div className="space-y-2">
+      <input
+        ref={fileInput}
+        id={`${name}-upload`}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple
+        className="hidden"
+        disabled={uploading || fields.length >= 20}
+        onChange={uploadImages}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={`Upload photos for ${label}`}
+        disabled={uploading || fields.length >= 20}
+        onClick={() => fileInput.current?.click()}
+      >
+        <Upload className="size-4" /> {uploading ? "Uploading photos…" : "Upload photos"}
+      </Button>
+      <p className="text-muted-foreground text-xs">JPEG, PNG, or WebP. Up to 8 MB each; max 20 photos for this listing.</p>
+      {fields.length > 0 && (
+        <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {fields.map((field, index) => (
               <figure key={field.id} className="relative min-w-0">
-                <Image src={field.url} alt={`${title} ${index + 1}`} width={480} height={320} unoptimized className="aspect-video w-full rounded object-cover" />
+                <Image src={field.url} alt={`${label} photo ${index + 1}`} width={480} height={320} unoptimized className="aspect-video w-full rounded object-cover" />
                 <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate">{title} {index + 1}</span>
-                  <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${title.toLowerCase()} ${index + 1}`} onClick={() => remove(index)}>
+                  <span className="truncate">{label} photo {index + 1}</span>
+                  <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${label.toLowerCase()} photo ${index + 1}`} onClick={() => remove(index)}>
                     <Trash2 className="size-4" />
                   </Button>
                 </figcaption>
               </figure>
             ))}
           </div>
-        )}
+          <SharePhotosButton photoUrls={fields.map((field) => field.url)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListingField({
+  control, register, errors, name, title, description, listingLabel,
+}: {
+  control: Control<PackageFormValues>;
+  register: UseFormRegister<PackageFormValues>;
+  errors: FieldErrors<PackageFormValues>;
+  name: ListingFieldName;
+  title: string;
+  description: string;
+  listingLabel: string;
+}) {
+  const { fields, append, remove } = useFieldArray({ control, name });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {fields.map((field, index) => {
+          const itemName = `${name}.${index}.name` as ListingNamePath;
+          const itemPhone = `${name}.${index}.phone` as ListingPhonePath;
+          const photosName = `${name}.${index}.photos` as ListingPhotosPath;
+          const itemErrors = errors[name]?.[index];
+
+          return (
+            <div key={field.id} className="space-y-3 rounded-md border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">{listingLabel} {index + 1}</p>
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${listingLabel.toLowerCase()} ${index + 1}`}
+                  onClick={() => remove(index)}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor={`${name}-${index}-name`}>{listingLabel} name</Label>
+                  <Input id={`${name}-${index}-name`} placeholder={`e.g. ${listingLabel} name`} {...register(itemName)} />
+                  <Err m={itemErrors?.name?.message} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`${name}-${index}-phone`}>Mobile number</Label>
+                  <Input id={`${name}-${index}-phone`} type="tel" autoComplete="tel" placeholder="e.g. +91 98765 43210" {...register(itemPhone)} />
+                  <Err m={itemErrors?.phone?.message} />
+                </div>
+              </div>
+              <ListingPhotosField control={control} name={photosName} label={`${listingLabel} ${index + 1}`} />
+            </div>
+          );
+        })}
+        <Button
+          type="button" variant="outline" size="sm"
+          disabled={fields.length >= 20}
+          onClick={() => append({ name: "", phone: "", photos: [] })}
+        >
+          <Plus className="mr-1 size-4" /> Add {listingLabel.toLowerCase()}
+        </Button>
       </CardContent>
     </Card>
   );
@@ -200,8 +264,14 @@ export function PackageForm({
       status: pkg?.status ?? "draft",
       inclusions: (pkg?.inclusions ?? []).map((value) => ({ value })),
       exclusions: (pkg?.exclusions ?? []).map((value) => ({ value })),
-      roomImages: (pkg?.roomImages ?? []).map((url) => ({ url })),
-      transportImages: (pkg?.transportImages ?? []).map((url) => ({ url })),
+      rooms: (pkg?.rooms ?? []).map((room) => ({
+        ...room,
+        photos: room.photos.map((url) => ({ url })),
+      })),
+      travelProviders: (pkg?.travelProviders ?? []).map((provider) => ({
+        ...provider,
+        photos: provider.photos.map((url) => ({ url })),
+      })),
       itinerary: (pkg?.itinerary ?? []).map(({ title, description }) => ({ title, description })),
     },
   });
@@ -241,8 +311,12 @@ export function PackageForm({
         ...v,
         inclusions: v.inclusions.map((x) => x.value).filter(Boolean),
         exclusions: v.exclusions.map((x) => x.value).filter(Boolean),
-        roomImages: v.roomImages.map((x) => x.url).filter(Boolean),
-        transportImages: v.transportImages.map((x) => x.url).filter(Boolean),
+        rooms: v.rooms
+          .filter((room) => room.name.trim() || room.phone.trim() || room.photos.some((photo) => photo.url.trim()))
+          .map((room) => ({ ...room, photos: room.photos.map((photo) => photo.url).filter(Boolean) })),
+        travelProviders: v.travelProviders
+          .filter((provider) => provider.name.trim() || provider.phone.trim() || provider.photos.some((photo) => photo.url.trim()))
+          .map((provider) => ({ ...provider, photos: provider.photos.map((photo) => photo.url).filter(Boolean) })),
       };
       const res = pkg ? await updatePackage(pkg.id, payload) : await createPackage(payload);
       if (res.ok) {
@@ -438,15 +512,15 @@ export function PackageForm({
         title="Exclusions" description="What the customer pays for separately."
         placeholder="e.g. Flights, visa fees"
       />
-      <ImageListField
-        control={control} name="roomImages"
-        title="Room images" description="Add public image links for the accommodation."
-        addLabel="Add room image"
+      <ListingField
+        control={control} register={register} errors={errors} name="rooms"
+        title="Rooms and stays" description="Add each room or property separately with its contact number and photos."
+        listingLabel="Room"
       />
-      <ImageListField
-        control={control} name="transportImages"
-        title="Transport images" description="Add public image links for the bus, van, or car."
-        addLabel="Add transport image"
+      <ListingField
+        control={control} register={register} errors={errors} name="travelProviders"
+        title="Travel and vehicles" description="Add each travel provider or vehicle separately with its contact number and photos."
+        listingLabel="Travel / vehicle"
       />
 
       {/* Itinerary */}
@@ -491,13 +565,13 @@ export function PackageForm({
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={pending}>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row">
+        <Button className="w-full sm:w-auto" type="submit" disabled={pending}>
           {pending ? "Saving…" : pkg ? "Save changes" : "Create package"}
         </Button>
         <Link
           href={pkg ? `/packages/${pkg.id}` : "/packages"}
-          className={buttonVariants({ variant: "outline" })}
+          className={buttonVariants({ variant: "outline", className: "w-full sm:w-auto" })}
         >
           Cancel
         </Link>

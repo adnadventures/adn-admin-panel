@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation";
-import Image from "next/image";
-import { Check, MessageCircle, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/session";
 import { getPackage } from "@/lib/data/packages";
 import { formatMoney } from "@/lib/finance/currency";
@@ -11,7 +9,10 @@ import { formatDate } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { GROUP_LABEL } from "@/lib/validators/package";
 import { personsLabel } from "@/lib/finance/pricing";
+import type { PackageListing } from "@/types/models";
 import { PackageActions } from "./package-actions";
+import { ListingPhotoGallery } from "./listing-photo-gallery";
+import { SharePhotosButton } from "./share-photos-button";
 import { StatusBadge } from "../status-badge";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -20,6 +21,42 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
             <p className="text-muted-foreground text-xs">{label}</p>
             <div className="text-sm">{children}</div>
         </div>
+    );
+}
+
+function ListingsCard({
+    title, listings, packageName,
+}: { title: string; listings: PackageListing[]; packageName: string }) {
+    return (
+        <Card>
+            <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+            <CardContent className="space-y-5">
+                {listings.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">None added.</p>
+                ) : listings.map((listing, index) => (
+                    <section key={`${listing.name}-${index}`} className="space-y-4 rounded-lg border p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 className="text-base font-semibold">{listing.name}</h3>
+                                {listing.phone && (
+                                    <a className="text-muted-foreground text-base hover:underline" href={`tel:${listing.phone}`}>
+                                        {listing.phone}
+                                    </a>
+                                )}
+                            </div>
+                            <SharePhotosButton photoUrls={listing.photos} />
+                        </div>
+                        {listing.photos.length > 0 && (
+                            <ListingPhotoGallery
+                                photos={listing.photos}
+                                packageName={packageName}
+                                listingName={listing.name}
+                            />
+                        )}
+                    </section>
+                ))}
+            </CardContent>
+        </Card>
     );
 }
 
@@ -33,17 +70,6 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
         pkg.price.currency !== "INR" && settings.fx.rates[pkg.price.currency]
             ? Math.round(pkg.price.amount * settings.fx.rates[pkg.price.currency])
             : null;
-    const shareText = [
-        `*${pkg.name}*`,
-        `${pkg.destination} | ${pkg.days} days / ${pkg.nights} nights`,
-        `Starting at ${formatMoney(pkg.price.amount, pkg.price.currency)} per person`,
-        pkg.inclusions.length ? `Includes:\n${pkg.inclusions.map((item) => `• ${item}`).join("\n")}` : "",
-        pkg.exclusions.length ? `Excludes:\n${pkg.exclusions.map((item) => `• ${item}`).join("\n")}` : "",
-        pkg.roomImages.length ? `Room images:\n${pkg.roomImages.join("\n")}` : "",
-        pkg.transportImages.length ? `Bus, van, and car images:\n${pkg.transportImages.join("\n")}` : "",
-    ].filter(Boolean).join("\n\n");
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-
     return (
         <>
             <PageHeader
@@ -51,9 +77,6 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                 description={`${pkg.destination} · ${pkg.days}D / ${pkg.nights}N`}
                 actions={
                     <>
-                        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}>
-                            <MessageCircle className="mr-2 size-4" /> Share on WhatsApp
-                        </a>
                         {user.role !== "staff" && <PackageActions pkg={pkg} />}
                     </>
                 }
@@ -88,7 +111,7 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                                 const next = pkg.priceTiers[i + 1];
                                 const hi = next ? next.fromPersons - 1 : pkg.maxPersons > 0 ? pkg.maxPersons : null;
                                 const label =
-                                    hi === null ? `${t.fromPersons}+ persons`
+                                    hi === null ? `Min ${t.fromPersons} members`
                                         : hi === t.fromPersons ? `${t.fromPersons} persons`
                                             : `${t.fromPersons} to ${hi} persons`;
                                 return (
@@ -139,35 +162,8 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader><CardTitle>Room images</CardTitle></CardHeader>
-                    <CardContent>
-                        {pkg.roomImages.length === 0 ? (
-                            <p className="text-muted-foreground text-sm">None added.</p>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-3">
-                                {pkg.roomImages.map((src, index) => (
-                                    <Image key={src} src={src} alt={`${pkg.name} room ${index + 1}`} width={640} height={360} unoptimized className="aspect-video w-full rounded object-cover" />
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader><CardTitle>Bus, van, and car images</CardTitle></CardHeader>
-                    <CardContent>
-                        {pkg.transportImages.length === 0 ? (
-                            <p className="text-muted-foreground text-sm">None added.</p>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-3">
-                                {pkg.transportImages.map((src, index) => (
-                                    <Image key={src} src={src} alt={`${pkg.name} transport ${index + 1}`} width={640} height={360} unoptimized className="aspect-video w-full rounded object-cover" />
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                <ListingsCard title="Rooms and stays" listings={pkg.rooms} packageName={pkg.name} />
+                <ListingsCard title="Travel and vehicles" listings={pkg.travelProviders} packageName={pkg.name} />
 
                 <Card className="lg:col-span-2">
                     <CardHeader><CardTitle>Itinerary</CardTitle></CardHeader>

@@ -60,10 +60,10 @@ export function OrderSourceForm({
         {errors.notes && <p className="text-destructive text-xs">{errors.notes.message}</p>}
       </div>
 
-      <div className="flex items-center justify-between rounded-md border p-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">Active</p>
-          <p className="text-muted-foreground text-xs">Inactive sources can't be picked on new bookings.</p>
+          <p className="text-muted-foreground text-xs">Inactive sources can&apos;t be picked on new bookings.</p>
         </div>
         <Controller
           control={control}
@@ -72,11 +72,11 @@ export function OrderSourceForm({
         />
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button className="w-full sm:w-auto" type="button" variant="outline" onClick={onDone} disabled={pending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pending}>
+        <Button className="w-full sm:w-auto" type="submit" disabled={pending}>
           {pending ? "Saving…" : source ? "Save changes" : "Create source"}
         </Button>
       </div>

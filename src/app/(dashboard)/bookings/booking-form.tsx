@@ -196,13 +196,13 @@ export function BookingForm({
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={pending}>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row">
+        <Button className="w-full sm:w-auto" type="submit" disabled={pending}>
           {pending ? "Saving…" : booking ? "Save changes" : "Create booking"}
         </Button>
         <Link
           href={booking ? `/bookings/${booking.id}` : "/bookings"}
-          className={buttonVariants({ variant: "outline" })}
+          className={buttonVariants({ variant: "outline", className: "w-full sm:w-auto" })}
         >
           Cancel
         </Link>

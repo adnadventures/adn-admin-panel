@@ -60,7 +60,7 @@ export function CustomersView({ initial, role }: { initial: CustomersPage; role:
             className="pl-9"
           />
         </div>
-        <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
+        <Button className="w-full sm:w-auto" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="mr-2 size-4" /> Add customer
         </Button>
       </div>
@@ -135,7 +135,7 @@ export function CustomersView({ initial, role }: { initial: CustomersPage; role:
         </Table>
       </div>
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
         <span className="text-muted-foreground">{items.length} shown</span>
         {next && (
           <Button variant="outline" disabled={loading} onClick={() => load(q, next, true)}>

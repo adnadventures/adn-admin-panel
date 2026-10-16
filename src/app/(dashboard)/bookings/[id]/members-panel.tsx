@@ -44,7 +44,7 @@ export function MembersPanel({
                 <CardTitle>Members ({booking.memberCount})</CardTitle>
                 <div className="flex flex-wrap items-center gap-2">
                     {reason && <span className="text-muted-foreground text-xs">{reason}</span>}
-                    <Button disabled={!!reason} onClick={() => { setEditing(null); setOpen(true); }}>
+                    <Button className="w-full sm:w-auto" disabled={!!reason} onClick={() => { setEditing(null); setOpen(true); }}>
                         <Plus className="mr-2 size-4" /> Add member
                     </Button>
                 </div>

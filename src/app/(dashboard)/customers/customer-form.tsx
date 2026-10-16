@@ -124,7 +124,7 @@ function CustomerForm({
 
       {/* ID proofs */}
       <div className="space-y-3 rounded-md border p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-medium">ID proofs</p>
             <p className="text-muted-foreground text-xs">Encrypted when saved. Only the last 4 characters are shown afterwards.</p>
@@ -156,14 +156,14 @@ function CustomerForm({
             <div className="flex gap-2">
               <select
                 aria-label="ID type"
-                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                className="border-input bg-background h-9 min-w-0 max-w-32 rounded-md border px-2 text-sm"
                 {...register(`newIdDocs.${i}.type`)}
               >
                 {ID_TYPE_KEYS.map((k) => (
                   <option key={k} value={k}>{ID_TYPES[k]}</option>
                 ))}
               </select>
-              <Input placeholder="ID number" autoComplete="off" {...register(`newIdDocs.${i}.number`)} />
+              <Input className="min-w-0 flex-1" placeholder="ID number" autoComplete="off" {...register(`newIdDocs.${i}.number`)} />
               <Button type="button" variant="ghost" size="icon" aria-label="Remove" onClick={() => remove(i)}>
                 <Trash2 className="size-4" />
               </Button>

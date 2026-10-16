@@ -124,8 +124,8 @@ function toDoc(d: PackageInput) {
     ],
     inclusions: d.inclusions,
     exclusions: d.exclusions,
-    roomImages: d.roomImages,
-    transportImages: d.transportImages,
+    rooms: d.rooms,
+    travelProviders: d.travelProviders,
     itinerary: d.itinerary.map((x, i) => ({ day: i + 1, title: x.title, description: x.description })),
     status: d.status,
   };
@@ -186,7 +186,13 @@ export async function updatePackage(id: string, input: unknown): Promise<Result>
   }
 
   const batch = adminDb.batch();
-  batch.update(ref, { ...doc, priceBasis: FieldValue.delete(), ...updateMeta(user) });
+  batch.update(ref, {
+    ...doc,
+    roomImages: FieldValue.delete(),
+    transportImages: FieldValue.delete(),
+    priceBasis: FieldValue.delete(),
+    ...updateMeta(user),
+  });
   batch.set(
     adminDb.collection(COL.auditLogs).doc(),
     auditEntry(user, "package.update", "package", id, {

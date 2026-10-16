@@ -49,6 +49,12 @@ export type GroupType = "couple" | "fixed_group" | "open_group";
 // amount = per-person price in minor units, applies from `fromPersons` upward
 export type PriceTier = { fromPersons: number; amount: number };
 
+export type PackageListing = {
+  name: string;
+  phone: string;
+  photos: string[];
+};
+
 export type TravelPackage = Meta & {
   name: string;
   searchName: string;
@@ -62,8 +68,10 @@ export type TravelPackage = Meta & {
   priceTiers: PriceTier[]; // sorted, first tier starts at minPersons
   inclusions: string[];
   exclusions: string[];
-  roomImages: string[];
-  transportImages: string[];
+  rooms: PackageListing[];
+  travelProviders: PackageListing[];
+  roomImages?: string[];
+  transportImages?: string[];
   itinerary: { day: number; title: string; description: string }[];
   status: PackageStatus;
 };

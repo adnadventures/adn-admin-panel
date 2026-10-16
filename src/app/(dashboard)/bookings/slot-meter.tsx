@@ -7,7 +7,7 @@ export function SlotMeter({ b }: { b: Booking }) {
   const pct = Math.min(100, Math.round((b.memberCount / target) * 100));
 
   return (
-    <div className="min-w-44 space-y-1">
+    <div className="min-w-0 space-y-1 sm:min-w-44">
       <div className="flex justify-between gap-3 text-xs">
         <span className="font-medium">{s.main}</span>
         <span className="text-muted-foreground">

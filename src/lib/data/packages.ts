@@ -12,8 +12,12 @@ function normalize(p: TravelPackage): TravelPackage {
     minPersons: min,
     maxPersons: p.maxPersons ?? 0,
     priceTiers: p.priceTiers?.length ? p.priceTiers : [{ fromPersons: min, amount: p.price.amount }],
-    roomImages: p.roomImages ?? [],
-    transportImages: p.transportImages ?? [],
+    rooms: p.rooms ?? (p.roomImages?.length
+      ? [{ name: "Existing room photos", phone: "", photos: p.roomImages }]
+      : []),
+    travelProviders: p.travelProviders ?? (p.transportImages?.length
+      ? [{ name: "Existing transport photos", phone: "", photos: p.transportImages }]
+      : []),
   };
 }
 

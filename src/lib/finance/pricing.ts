@@ -30,6 +30,6 @@ export function quote(pkg: Priced, persons: number) {
 
 export function personsLabel(p: Pick<TravelPackage, "minPersons" | "maxPersons">) {
   if (p.maxPersons === p.minPersons) return `${p.minPersons} ${p.minPersons === 1 ? "person" : "persons"}`;
-  if (p.maxPersons === 0) return `${p.minPersons}+ persons`;
+  if (p.maxPersons === 0) return `Min ${p.minPersons} members`;
   return `${p.minPersons} to ${p.maxPersons} persons`;
 }
