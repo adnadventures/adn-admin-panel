@@ -35,6 +35,7 @@ export function BookingForm({
       ? {
           packageId: booking.packageId,
           title: booking.title,
+          contactName: booking.contactName ?? "",
           travelStart: booking.travelStart,
           travelEnd: booking.travelEnd,
           closeDate: booking.closeDate,
@@ -47,7 +48,7 @@ export function BookingForm({
           notes: booking.notes,
         }
       : {
-          packageId: "", title: "", travelStart: "", travelEnd: "", closeDate: defaultCloseDate,
+          packageId: "", title: "", contactName: "", travelStart: "", travelEnd: "", closeDate: defaultCloseDate,
           minPersons: 1, maxPersons: 0, adultPrice: 0, childPrice: 0, seniorPrice: 0,
           repriceExisting: false, notes: "",
         },
@@ -112,6 +113,17 @@ export function BookingForm({
             <Label htmlFor="title">Booking title</Label>
             <Input id="title" placeholder="e.g. Bali, 12 Nov batch" {...register("title")} />
             <Err m={errors.title?.message} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="contactName">Booked person name (required)</Label>
+            <Input
+              id="contactName"
+              autoComplete="name"
+              placeholder="Enter the booked person's full name"
+              required
+              {...register("contactName")}
+            />
+            <Err m={errors.contactName?.message} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="travelStart">Travel starts</Label>

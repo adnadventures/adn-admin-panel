@@ -11,6 +11,7 @@ export const bookingInputSchema = z
   .object({
     packageId: z.string().min(1, "Choose a package"),
     title: z.string().trim().min(2, "Title is too short").max(100, "Max 100 characters"),
+    contactName: z.string().trim().min(2, "Enter the booked person's name").max(80, "Max 80 characters"),
     travelStart: date,
     travelEnd: date,
     closeDate: date,

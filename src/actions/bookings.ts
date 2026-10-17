@@ -51,6 +51,7 @@ export async function createBooking(input: unknown): Promise<Result> {
       tx.set(ref, {
         bookingNo,
         title: d.title,
+        contactName: d.contactName,
         searchName: toSearchName(d.title),
         packageId: d.packageId,
         packageName: pkg.name,
@@ -71,7 +72,9 @@ export async function createBooking(input: unknown): Promise<Result> {
       });
       tx.set(
         adminDb.collection(COL.auditLogs).doc(),
-        auditEntry(user, "booking.create", "booking", ref.id, { bookingNo, title: d.title }),
+        auditEntry(user, "booking.create", "booking", ref.id, {
+          bookingNo, title: d.title, contactName: d.contactName,
+        }),
       );
       return ref.id;
     });
@@ -129,6 +132,7 @@ export async function updateBooking(id: string, input: unknown): Promise<Result>
 
       tx.update(ref, {
         title: d.title,
+        contactName: d.contactName,
         searchName: toSearchName(d.title),
         travelStart: d.travelStart,
         travelEnd: d.travelEnd,
@@ -144,7 +148,7 @@ export async function updateBooking(id: string, input: unknown): Promise<Result>
         adminDb.collection(COL.auditLogs).doc(),
         auditEntry(user, "booking.update", "booking", id, {
           before: { rates: b.rates, closeDate: b.closeDate },
-          after: { rates, closeDate: d.closeDate },
+          after: { rates, closeDate: d.closeDate, contactName: d.contactName },
           membersRepriced: repriced,
         }),
       );

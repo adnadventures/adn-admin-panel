@@ -17,7 +17,6 @@ const app = isNew
 
 export const adminAuth = getAuth(app);
 export const adminDb = getFirestore(app);
-
 if (isNew) {
   // settings() may only be called once, so it's guarded against hot reload
   adminDb.settings({ ignoreUndefinedProperties: true });

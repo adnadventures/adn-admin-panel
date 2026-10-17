@@ -1,0 +1,73 @@
+import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/shared/page-header";
+import { requireUser } from "@/lib/auth/session";
+import { getInvoice } from "@/lib/data/invoices";
+import { fromMinor } from "@/lib/finance/currency";
+import type { InvoiceInput } from "@/lib/validators/invoice";
+import { InvoiceDocument } from "../invoice-document";
+import { InvoiceActions } from "./invoice-actions";
+
+export default async function InvoicePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const user = await requireUser();
+  const { id } = await params;
+  const invoice = await getInvoice(id);
+  if (!invoice) notFound();
+
+  const values: InvoiceInput = {
+    invoiceNo: invoice.invoiceNo,
+    bookingId: invoice.bookingId ?? "",
+    issueDate: invoice.issueDate.slice(0, 10),
+    tripDestination: invoice.tripDestination,
+    tripStatus: invoice.tripStatus,
+    customer: {
+      name: invoice.customer.name,
+      phone: invoice.customer.phone,
+      address: invoice.customer.address,
+    },
+    package: {
+      destination: invoice.package.destination,
+      startDate: invoice.package.startDate.slice(0, 10),
+      endDate: invoice.package.endDate.slice(0, 10),
+      memberCount: invoice.package.memberCount,
+      totalPrice: fromMinor(invoice.package.totalPrice),
+    },
+    currency: invoice.currency,
+    discount: fromMinor(invoice.discount),
+    taxEnabled: invoice.tax.enabled,
+    taxRatePercent: invoice.tax.rateBps / 100,
+    taxMode: invoice.tax.mode,
+    payments: invoice.payments.map((payment) => ({
+      amount: fromMinor(payment.amount),
+      date: payment.date.slice(0, 10),
+    })),
+    paymentTerms: invoice.paymentTerms,
+    cancellationPolicy: invoice.cancellationPolicy,
+    termsAndConditions: invoice.termsAndConditions,
+    importantNotes: invoice.importantNotes,
+    attachments: invoice.attachments,
+  };
+
+  return (
+    <>
+      <PageHeader
+        title={invoice.invoiceNo}
+        description={`${invoice.customer.name} · ${invoice.tripDestination}`}
+        actions={<InvoiceActions invoice={invoice} canManage={user.role === "admin" || user.role === "manager"} />}
+      />
+      <InvoiceDocument
+        values={values}
+        business={{ ...invoice.business, tagline: invoice.business.tagline ?? "" }}
+      />
+      {invoice.attachments.length > 0 && (
+        <section className="mt-6 rounded-md border p-4 print:hidden">
+          <h2 className="mb-3 font-semibold">Supporting Documents</h2>
+          <InvoiceActions invoice={invoice} canManage={false} showAttachments showControls={false} />
+        </section>
+      )}
+    </>
+  );
+}

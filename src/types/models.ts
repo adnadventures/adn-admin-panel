@@ -84,6 +84,7 @@ export type BookingStatus = "open" | "closed" | "completed" | "cancelled";
 export type Booking = Meta & {
   bookingNo: string; // ADN-B-2026-0001
   title: string;
+  contactName: string;
   searchName: string;
   packageId: string;
   packageName: string;
@@ -121,31 +122,66 @@ export type Member = Meta & {
 
 export type InvoiceStatus = "draft" | "sent" | "partially_paid" | "paid" | "cancelled";
 
-export type InvoiceLine = {
-  description: string;
-  qty: number;
-  unitPrice: number; // minor units, invoice currency
-  total: number;     // qty × unitPrice
+export type InvoicePayment = { amount: number; date: ISO }; // amount in minor units
+export type InvoiceAttachmentContentType =
+  | "application/pdf"
+  | "image/jpeg"
+  | "image/png"
+  | "image/webp"
+  | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export type InvoiceAttachment = {
+  id: string;
+  name: string;
+  objectPath: string;
+  contentType: InvoiceAttachmentContentType;
+  size: number;
 };
 
 export type Invoice = Meta & {
   invoiceNo: string; // ADN-2026-0001
-  bookingId: string;
-  customer: { id: string; name: string; email?: string; phone?: string; address?: string };
-  business: { name: string; gstin: string; address: string }; // snapshot
+  bookingId: string | null;
+  issueDate: ISO;
+  tripDestination: string;
+  tripStatus: "upcoming" | "completed" | "cancelled";
+  customer: { id: string | null; name: string; email?: string; phone: string; address: string };
+  package: {
+    destination: string;
+    startDate: ISO;
+    endDate: ISO;
+    memberCount: number;
+    totalPrice: number;
+  };
+  business: { name: string; tagline?: string; gstin: string; address: string }; // snapshot
   currency: CurrencyCode;
-  lines: InvoiceLine[];
   discount: number;
   tax: TaxConfig;       // snapshot, overridable per invoice
   subtotal: number;
   taxable: number;
   taxAmount: number;
   total: number;
-  amountPaid: number;   // invoice currency
+  payments: InvoicePayment[];
+  amountPaid: number;   // total payments in invoice currency
+  remainingBalance: number;
   status: InvoiceStatus;
-  issueDate: ISO;
-  dueDate: ISO;
-  notes?: string;
+  paymentTerms: string;
+  cancellationPolicy: string;
+  termsAndConditions: string;
+  importantNotes: string;
+  attachments: InvoiceAttachment[];
+};
+
+export type InvoiceBookingOption = {
+  id: string;
+  bookingNo: string;
+  title: string;
+  contactName: string;
+  destination: string;
+  travelStart: string;
+  travelEnd: string;
+  memberCount: number;
+  totalAmount: number;
+  currency: CurrencyCode;
+  status: BookingStatus;
 };
 
 export type TransactionType = "income" | "expense" | "refund";

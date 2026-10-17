@@ -34,7 +34,7 @@ export function BookingsTable({ data, canManage }: { data: Booking[]; canManage:
     {
       id: "booking",
       header: "Booking",
-      accessorFn: (r) => `${r.bookingNo} ${r.title} ${r.destination}`,
+      accessorFn: (r) => `${r.bookingNo} ${r.title} ${r.contactName ?? ""} ${r.destination}`,
       cell: ({ row }) => (
         <div>
           <Link href={`/bookings/${row.original.id}`} className="font-medium hover:underline">
@@ -43,6 +43,9 @@ export function BookingsTable({ data, canManage }: { data: Booking[]; canManage:
           <p className="text-muted-foreground text-xs">
             {row.original.bookingNo} · {row.original.destination}
           </p>
+          {row.original.contactName && (
+            <p className="text-muted-foreground text-xs">Booked by {row.original.contactName}</p>
+          )}
         </div>
       ),
     },

@@ -59,6 +59,7 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
+            <Field label="Booked person">{booking.contactName || "—"}</Field>
             <Field label="Status"><BookingStatusBadge b={booking} /></Field>
             <Field label="Slots"><SlotMeter b={booking} /></Field>
             <Field label="Travel">

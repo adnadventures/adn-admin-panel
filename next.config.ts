@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
         "localhost:3000",
         "*.app.github.dev", // any Codespaces forwarded URL
       ],
-      bodySizeLimit: "9mb",
+      bodySizeLimit: "12mb",
     },
   },
 };
