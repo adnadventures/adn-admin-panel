@@ -4,16 +4,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
 import { CATEGORY_LABEL, GENDER_LABEL } from "@/lib/booking-utils";
 import { getBooking, listMembers } from "@/lib/data/bookings";
+import { listExpensesForBooking } from "@/lib/data/expenses";
 import { listOrderSources } from "@/lib/data/order-sources";
 import { getPackage } from "@/lib/data/packages";
 import { formatMoney } from "@/lib/finance/currency";
+import { convertMoneyEntryAmount } from "@/lib/finance/fx";
 import { pricePerPerson } from "@/lib/finance/pricing";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayIST } from "@/lib/format";
+import { getSettings } from "@/lib/settings";
+import type { CurrencyCode } from "@/lib/finance/currency";
 import type { Gender } from "@/types/models";
 import { SlotMeter } from "../slot-meter";
 import { BookingStatusBadge } from "../status-badge";
 import { BookingActions } from "./booking-actions";
 import { MembersPanel } from "./members-panel";
+import { BookingExpensesPanel } from "./booking-expenses-panel";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -24,16 +29,68 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function BookingProfitability({
+  revenue,
+  memberCount,
+  currency,
+  packageCostConfigured,
+  packageCostPerMember,
+  bookingExpenses,
+}: {
+  revenue: number;
+  memberCount: number;
+  currency: CurrencyCode;
+  packageCostConfigured: boolean;
+  packageCostPerMember: number | null;
+  bookingExpenses: number | null;
+}) {
+  const packageCost = !packageCostConfigured
+    ? 0
+    : packageCostPerMember === null ? null : packageCostPerMember * memberCount;
+  const totalExpenses = packageCost === null || bookingExpenses === null
+    ? null
+    : packageCost + bookingExpenses;
+  const profit = totalExpenses === null ? null : revenue - totalExpenses;
+  const formatTotal = (amount: number | null) =>
+    amount === null ? "Unavailable — check exchange rates" : formatMoney(amount, currency);
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>Booking profitability</CardTitle>
+        <p className="text-muted-foreground text-sm">
+          Revenue minus total expenses.
+        </p>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-3">
+        <Field label="Total revenue">
+          <span className="font-semibold">{formatTotal(revenue)}</span>
+        </Field>
+        <Field label="Total expenses">
+          <span className="font-semibold">{formatTotal(totalExpenses)}</span>
+        </Field>
+        <Field label="Profit">
+          <span className={`font-semibold ${profit !== null && profit < 0 ? "text-destructive" : ""}`}>
+            {formatTotal(profit)}
+          </span>
+        </Field>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default async function BookingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
   const booking = await getBooking(id);
   if (!booking) notFound();
 
-  const [members, sources, pkg] = await Promise.all([
+  const [members, sources, pkg, expenses, settings] = await Promise.all([
     listMembers(id),
     listOrderSources(),
     getPackage(booking.packageId),
+    user.role === "staff" ? Promise.resolve([]) : listExpensesForBooking(id),
+    user.role === "staff" ? Promise.resolve(null) : getSettings(),
   ]);
 
   const active = members.filter((m) => m.status === "active");
@@ -46,6 +103,14 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
       ? pricePerPerson(pkg.priceTiers, Math.max(booking.memberCount, booking.minPersons))
       : null;
   const rateMismatch = pkgRate !== null && pkgRate !== booking.rates.adult;
+  const packageCostPerMember = pkg?.cost && settings
+    ? convertMoneyEntryAmount(pkg.cost, booking.currency, settings.fx.rates) ?? null
+    : null;
+  const bookingExpenses = expenses.reduce<number | null>((total, expense) => {
+    if (total === null || !settings) return null;
+    const converted = convertMoneyEntryAmount(expense.money, booking.currency, settings.fx.rates);
+    return converted === undefined ? null : total + converted;
+  }, 0);
 
   return (
     <>
@@ -103,12 +168,31 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
+      {user.role !== "staff" && (
+        <BookingProfitability
+          revenue={booking.totalAmount}
+          memberCount={booking.memberCount}
+          currency={booking.currency}
+          packageCostConfigured={Boolean(pkg?.cost)}
+          packageCostPerMember={packageCostPerMember}
+          bookingExpenses={bookingExpenses}
+        />
+      )}
+
       <MembersPanel
         booking={booking}
         members={members}
         sources={sources.filter((s) => s.active).map((s) => ({ id: s.id, name: s.name }))}
         canManage={user.role !== "staff"}
       />
+      {user.role !== "staff" && (
+        <BookingExpensesPanel
+          bookingId={id}
+          currency={booking.currency}
+          expenses={expenses}
+          today={todayIST()}
+        />
+      )}
     </>
   );
 }

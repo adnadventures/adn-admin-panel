@@ -13,6 +13,17 @@ export async function listExpenses(): Promise<FinanceExpense[]> {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
+export async function listExpensesForBooking(bookingId: string): Promise<FinanceExpense[]> {
+  const snapshot = await adminDb.collection(COL.transactions)
+    .where("bookingId", "==", bookingId)
+    .where("isDeleted", "==", false)
+    .where("type", "==", "expense")
+    .get();
+  return snapshot.docs
+    .map((doc) => serializeDoc<FinanceExpense>(doc))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
 export async function getExpense(id: string): Promise<FinanceExpense | null> {
   const snapshot = await adminDb.collection(COL.transactions).doc(id).get();
   if (!snapshot.exists || snapshot.data()?.isDeleted || snapshot.data()?.type !== "expense") {

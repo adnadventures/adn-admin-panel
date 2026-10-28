@@ -1,46 +1,67 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/session";
+import { listBookings } from "@/lib/data/bookings";
 import { listExpenses } from "@/lib/data/expenses";
-import { listInvoices } from "@/lib/data/invoices";
+import { listPackages } from "@/lib/data/packages";
+import { convertMoneyEntryAmount } from "@/lib/finance/fx";
+import { getSettings } from "@/lib/settings";
 import { todayIST } from "@/lib/format";
 import { FinanceDashboard } from "./finance-dashboard";
 
 export default async function Page() {
   await requireUser(["admin", "manager"]);
-  const [allInvoices, allExpenses] = await Promise.all([listInvoices(), listExpenses()]);
-  const invoices = allInvoices.map((invoice) => ({
-    issueDate: invoice.issueDate,
-    currency: invoice.currency,
-    total: invoice.total,
-    remainingBalance: invoice.remainingBalance,
-    status: invoice.status,
-    payments: (invoice.payments ?? []).map(({ amount, date }) => ({ amount, date })),
-    package: {
-      name: invoice.package.name ?? "",
-      destination: invoice.package.destination,
-      cost: invoice.package.cost
-        ? { currency: invoice.package.cost.currency, amount: invoice.package.cost.amount }
-        : null,
-    },
-  }));
-  const expenses = allExpenses.map((expense) => ({
-    id: expense.id,
-    date: expense.date,
-    description: expense.description,
-    category: expense.category,
-    vendor: expense.vendor,
-    amount: expense.money.amount,
-    currency: expense.money.currency,
-    note: expense.note,
-    receipt: expense.receipt
-      ? { name: expense.receipt.name, contentType: expense.receipt.contentType }
-      : null,
-  }));
+  const [bookings, packages, allExpenses, settings] = await Promise.all([
+    listBookings(),
+    listPackages(),
+    listExpenses(),
+    getSettings(),
+  ]);
+  const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
+  const expensesByBooking = new Map<string, (typeof allExpenses)>();
+  const bookingIds = new Set(bookings.map((booking) => booking.id));
+
+  for (const expense of allExpenses) {
+    if (!expense.bookingId || !bookingIds.has(expense.bookingId)) continue;
+    expensesByBooking.set(expense.bookingId, [
+      ...(expensesByBooking.get(expense.bookingId) ?? []),
+      expense,
+    ]);
+  }
+
+  const reports = bookings.map((booking) => {
+    const pkg = packageById.get(booking.packageId);
+    const packageCostPerMember = pkg?.cost
+      ? convertMoneyEntryAmount(pkg.cost, booking.currency, settings.fx.rates)
+      : 0;
+    const packageCost = packageCostPerMember === undefined
+      ? null
+      : packageCostPerMember * booking.memberCount;
+    const bookingExpenses = (expensesByBooking.get(booking.id) ?? []).reduce<number | null>(
+      (total, expense) => {
+        if (total === null) return null;
+        const converted = convertMoneyEntryAmount(expense.money, booking.currency, settings.fx.rates);
+        return converted === undefined ? null : total + converted;
+      },
+      0,
+    );
+
+    return {
+      id: booking.id,
+      bookingNo: booking.bookingNo,
+      title: booking.title,
+      travelStart: booking.travelStart,
+      currency: booking.currency,
+      status: booking.status,
+      revenue: booking.totalAmount,
+      packageCost,
+      bookingExpenses,
+    };
+  });
 
   return (
     <>
-      <PageHeader title="Finance" description="Track invoice sales, payments, package profitability, and operating expenses." />
-      <FinanceDashboard invoices={invoices} expenses={expenses} today={todayIST()} />
+      <PageHeader title="Finance" description="Review booking revenue, expenses, and profit over a selected travel date range." />
+      <FinanceDashboard bookings={reports} today={todayIST()} />
     </>
   );
 }

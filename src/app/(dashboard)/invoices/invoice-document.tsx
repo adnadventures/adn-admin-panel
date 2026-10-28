@@ -68,6 +68,9 @@ export function InvoiceDocument({
             <p className="text-sm text-slate-600">
               MSME Registration No: UDAYAM-PY-03-0062646
             </p>
+            <p className="text-xs text-slate-600">
+              Inside Techgajana Campus, Thiruvalluvar Street, Near MGR Statue, Villianur, Puducherry - 605110
+            </p>
             {business.gstin && (
               <p className="mt-1 text-xs">GSTIN: {business.gstin}</p>
             )}

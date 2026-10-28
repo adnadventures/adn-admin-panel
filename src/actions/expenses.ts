@@ -9,6 +9,7 @@ import { buildMoneyEntry } from "@/lib/finance/fx";
 import { toMinor } from "@/lib/finance/currency";
 import { COL, auditEntry, createMeta, deleteMeta } from "@/lib/firestore/helpers";
 import { getExpense } from "@/lib/data/expenses";
+import { getBooking } from "@/lib/data/bookings";
 import { getSettings } from "@/lib/settings";
 import { createInvoiceStorageConfig } from "@/lib/r2/invoice-storage";
 import { expenseInputSchema } from "@/lib/validators/expense";
@@ -47,12 +48,16 @@ export async function createExpense(formData: FormData): Promise<Result> {
     description: formData.get("description"),
     category: formData.get("category"),
     vendor: formData.get("vendor"),
+    bookingId: formData.get("bookingId") ?? undefined,
     amount: Number(formData.get("amount")),
     currency: formData.get("currency"),
     note: formData.get("note"),
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const input = parsed.data;
+  if (input.bookingId && !(await getBooking(input.bookingId))) {
+    return { ok: false, error: "Booking not found" };
+  }
   const settings = await getSettings();
   if (
     input.currency !== "INR"
@@ -128,6 +133,7 @@ export async function createExpense(formData: FormData): Promise<Result> {
     description: input.description,
     category: input.category,
     vendor: input.vendor,
+    ...(input.bookingId ? { bookingId: input.bookingId } : {}),
     money,
     note: input.note,
     receipt,
@@ -137,6 +143,7 @@ export async function createExpense(formData: FormData): Promise<Result> {
     adminDb.collection(COL.auditLogs).doc(),
     auditEntry(user, "expense.create", "expense", expenseRef.id, {
       date: input.date, category: input.category, amount: money.amount, currency: money.currency,
+      ...(input.bookingId ? { bookingId: input.bookingId } : {}),
       receipt: Boolean(receipt),
     }),
   );
@@ -164,6 +171,7 @@ export async function createExpense(formData: FormData): Promise<Result> {
   }
 
   revalidatePath("/finance");
+  if (input.bookingId) revalidatePath(`/bookings/${input.bookingId}`);
   return { ok: true, id: expenseRef.id };
 }
 
@@ -179,9 +187,11 @@ export async function deleteExpense(id: string): Promise<Result> {
     auditEntry(user, "expense.delete", "expense", id, {
       date: expense.date, category: expense.category, amount: expense.money.amount,
       currency: expense.money.currency,
+      ...(expense.bookingId ? { bookingId: expense.bookingId } : {}),
     }),
   );
   await batch.commit();
   revalidatePath("/finance");
+  if (expense.bookingId) revalidatePath(`/bookings/${expense.bookingId}`);
   return { ok: true, id };
 }
