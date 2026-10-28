@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CURRENCY_CODES, type CurrencyCode } from "@/lib/finance/currency";
+import { CURRENCY_CODES } from "@/lib/finance/currency";
 
 export const PACKAGE_STATUSES = ["draft", "active", "archived"] as const;
 export const packageStatusSchema = z.enum(PACKAGE_STATUSES);
@@ -24,10 +24,10 @@ const common = {
   groupType: z.enum(GROUP_TYPES),
   minPersons: z.number().int("Whole number").min(1, "At least 1").max(500, "Max 500"),
   maxPersons: z.number().int("Whole number").min(0, "Cannot be negative").max(500, "Max 500"),
-  currency: z
-    .string()
-    .refine((c) => CURRENCY_CODES.includes(c as CurrencyCode), "Choose a currency"),
+  currency: z.enum(CURRENCY_CODES),
   price: z.number().min(0, "Price cannot be negative").max(1_000_000_000, "Price is too large"),
+  cost: z.number().min(0, "Cost cannot be negative").max(1_000_000_000, "Cost is too large"),
+  costCurrency: z.enum(CURRENCY_CODES),
   extraTiers: z
     .array(
       z.object({

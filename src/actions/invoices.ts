@@ -6,6 +6,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { requireUser } from "@/lib/auth/session";
 import { calcTotals } from "@/lib/finance/tax";
+import { buildMoneyEntry } from "@/lib/finance/fx";
 import { percentToBps, toMinor } from "@/lib/finance/currency";
 import { todayIST } from "@/lib/format";
 import { COL, auditEntry, createMeta, deleteMeta, updateMeta } from "@/lib/firestore/helpers";
@@ -36,6 +37,8 @@ function buildInvoice(
   input: InvoiceInput,
   invoiceNo: string,
   business: Invoice["business"],
+  rates: Record<string, number>,
+  previous?: Pick<Invoice, "payments" | "package">,
 ): Omit<Invoice, "id" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy" | "isDeleted"> {
   const subtotal = toMinor(input.package.totalPrice);
   const discount = toMinor(input.discount);
@@ -45,12 +48,42 @@ function buildInvoice(
     mode: input.taxMode,
   } as const;
   const totals = calcTotals({ lineTotals: [subtotal], discount, tax });
-  const payments: InvoicePayment[] = input.payments.map((payment) => ({
-    amount: toMinor(payment.amount),
-    date: payment.date,
-  }));
+  const payments: InvoicePayment[] = input.payments.map((payment, index) => {
+    const amount = toMinor(payment.amount);
+    const previousPayment = payment.paymentId
+      ? previous?.payments.find((item) => item.paymentId === payment.paymentId)
+      : previous?.payments[index];
+    const money = previousPayment?.amount === amount && previousPayment.date === payment.date
+      && previousPayment.money?.currency === input.currency
+      ? previousPayment.money
+      : buildMoneyEntry({
+          currency: input.currency,
+          amount,
+          defaultRates: rates,
+          defaultFeePercent: 0,
+        });
+    return {
+      paymentId: previousPayment?.paymentId ?? randomUUID(),
+      amount,
+      date: payment.date,
+      money,
+    };
+  });
   const amountPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
   const remainingBalance = Math.max(totals.total - amountPaid, 0);
+  const packageCostAmount = toMinor(input.package.cost);
+  const previousPackageCost = previous?.package.cost;
+  const packageCost = packageCostAmount > 0
+    ? previousPackageCost?.amount === packageCostAmount
+      && previousPackageCost.currency === input.currency
+      ? previousPackageCost
+      : buildMoneyEntry({
+          currency: input.currency,
+          amount: packageCostAmount,
+          defaultRates: rates,
+          defaultFeePercent: 0,
+        })
+    : null;
   const status: InvoiceStatus = remainingBalance === 0 && totals.total > 0
     ? "paid"
     : amountPaid > 0 ? "partially_paid" : "sent";
@@ -65,6 +98,7 @@ function buildInvoice(
     package: {
       ...input.package,
       totalPrice: subtotal,
+      cost: packageCost,
     },
     business,
     currency: input.currency,
@@ -99,6 +133,12 @@ export async function createInvoice(input: unknown): Promise<Result> {
     return { ok: false, error: "Invalid invoice attachment" };
   }
   const settings = await getSettings();
+  if (
+    (data.package.cost > 0 || data.payments.length > 0) && data.currency !== "INR"
+    && (!settings.fx.rates[data.currency] || settings.fx.rates[data.currency] <= 0)
+  ) {
+    return { ok: false, error: `Set an exchange rate for ${data.currency} in Settings before recording invoice payments or package costs` };
+  }
   const business = {
     name: settings.business.name,
     tagline: settings.business.tagline,
@@ -120,7 +160,7 @@ export async function createInvoice(input: unknown): Promise<Result> {
       const duplicate = await tx.get(invoices.where("invoiceNo", "==", candidate).where("isDeleted", "==", false));
       if (!duplicate.empty) throw new Error("An invoice with this number already exists");
 
-      const invoice = buildInvoice(data, candidate, business);
+      const invoice = buildInvoice(data, candidate, business, settings.fx.rates);
       tx.set(counterRef, { value: next });
       tx.set(invoiceRef, { ...invoice, ...createMeta(user) });
       tx.set(
@@ -160,7 +200,32 @@ export async function updateInvoice(id: string, input: unknown): Promise<Result>
     && !previousPaths.has(attachment.objectPath))) {
     return { ok: false, error: "Invalid invoice attachment" };
   }
-  const invoice = buildInvoice(parsed.data, parsed.data.invoiceNo || old.invoiceNo, old.business);
+  const settings = await getSettings();
+  const costAmount = toMinor(parsed.data.package.cost);
+  const previousCost = old.package.cost;
+  const packageCostNeedsRate = costAmount > 0
+    && (previousCost?.amount !== costAmount || previousCost.currency !== parsed.data.currency);
+  const paymentNeedsRate = parsed.data.payments.some((payment, index) => {
+    const previousPayment = payment.paymentId
+      ? old.payments.find((item) => item.paymentId === payment.paymentId)
+      : old.payments[index];
+    return previousPayment?.amount !== toMinor(payment.amount)
+      || previousPayment.date !== payment.date
+      || previousPayment.money?.currency !== parsed.data.currency;
+  });
+  if (
+    (packageCostNeedsRate || paymentNeedsRate) && parsed.data.currency !== "INR"
+    && (!settings.fx.rates[parsed.data.currency] || settings.fx.rates[parsed.data.currency] <= 0)
+  ) {
+    return { ok: false, error: `Set an exchange rate for ${parsed.data.currency} in Settings before recording invoice payments or package costs` };
+  }
+  const invoice = buildInvoice(
+    parsed.data,
+    parsed.data.invoiceNo || old.invoiceNo,
+    old.business,
+    settings.fx.rates,
+    old,
+  );
   const ref = adminDb.collection(COL.invoices).doc(id);
 
   try {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import Image from "next/image";
+import { useEffect, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,10 +13,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CURRENCIES, CURRENCY_CODES, formatMoney, percentToBps, toMinor } from "@/lib/finance/currency";
+import { CURRENCIES, CURRENCY_CODES, formatMoney, percentToBps, toMinor, type CurrencyCode } from "@/lib/finance/currency";
+import { convertMinorAmount } from "@/lib/finance/fx";
 import { calcTotals } from "@/lib/finance/tax";
+import { formatDuration } from "@/lib/format";
 import { invoiceInputSchema, type InvoiceInput } from "@/lib/validators/invoice";
-import type { Invoice, InvoiceBookingOption } from "@/types/models";
+import type { Invoice, InvoiceAttachment, InvoiceBookingOption } from "@/types/models";
 import type { AppSettings } from "@/lib/validators/settings";
 import { InvoiceDocument } from "./invoice-document";
 import { InvoicePdfButton } from "./invoice-pdf-button";
@@ -29,6 +32,75 @@ const DEFAULT_NOTES = "- Rates are calculated based on group size.\n- Changes in
 
 function ErrorText({ message }: { message?: string }) {
   return message ? <p className="text-destructive text-xs">{message}</p> : null;
+}
+
+function AttachmentPreview({
+  attachment,
+  invoiceId,
+  file,
+}: {
+  attachment: InvoiceAttachment;
+  invoiceId?: string;
+  file?: File;
+}) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!attachment.contentType.startsWith("image/") && attachment.contentType !== "application/pdf") {
+      return;
+    }
+
+    let objectUrl: string | undefined;
+    const controller = new AbortController();
+    const loadPreview = async () => {
+      try {
+        const blob = file ?? await (async () => {
+          if (!invoiceId) throw new Error("Saved attachment is unavailable");
+          const response = await fetch(
+            `/api/invoices/${invoiceId}/attachments/${attachment.id}`,
+            { signal: controller.signal },
+          );
+          if (!response.ok) throw new Error("Attachment preview failed to load");
+          return response.blob();
+        })();
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      } catch {
+        if (!controller.signal.aborted) setError("Preview could not be loaded.");
+      }
+    };
+
+    void loadPreview();
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment.contentType, attachment.id, file, invoiceId]);
+
+  if (!attachment.contentType.startsWith("image/") && attachment.contentType !== "application/pdf") {
+    return <p className="mt-2 text-xs text-muted-foreground">Preview isn’t available for this document type.</p>;
+  }
+  if (error) return <p className="mt-2 text-xs text-destructive">{error}</p>;
+  if (!previewUrl) return <p className="mt-2 text-xs text-muted-foreground">Loading preview…</p>;
+
+  return attachment.contentType === "application/pdf" ? (
+    <iframe
+      src={previewUrl}
+      title={`Preview of ${attachment.name}`}
+      className="mt-3 h-72 w-full rounded-md border bg-white"
+    />
+  ) : (
+    <Image
+      src={previewUrl}
+      alt={`Preview of ${attachment.name}`}
+      width={800}
+      height={600}
+      unoptimized
+      className="mt-3 max-h-72 w-full rounded-md border bg-white object-contain"
+    />
+  );
 }
 
 function initialValues(
@@ -50,11 +122,14 @@ function initialValues(
         address: initial.customer.address,
       },
       package: {
+        name: initial.package.name ?? "",
         destination: initial.package.destination,
         startDate: dateValue(initial.package.startDate),
         endDate: dateValue(initial.package.endDate),
+        duration: initial.package.duration ?? formatDuration(initial.package.startDate, initial.package.endDate),
         memberCount: initial.package.memberCount,
         totalPrice: initial.package.totalPrice / 100,
+        cost: initial.package.cost ? initial.package.cost.amount / 100 : 0,
       },
       currency: initial.currency,
       discount: initial.discount / 100,
@@ -62,6 +137,7 @@ function initialValues(
       taxRatePercent: initial.tax.rateBps / 100,
       taxMode: initial.tax.mode,
       payments: initial.payments.map((payment) => ({
+        paymentId: payment.paymentId,
         amount: payment.amount / 100,
         date: dateValue(payment.date),
       })),
@@ -80,7 +156,7 @@ function initialValues(
     tripDestination: "",
     tripStatus: "upcoming",
     customer: { name: "", phone: "", address: "" },
-    package: { destination: "", startDate: "", endDate: "", memberCount: 1, totalPrice: 0 },
+    package: { name: "", destination: "", startDate: "", endDate: "", duration: "", memberCount: 1, totalPrice: 0, cost: 0 },
     currency: "INR",
     discount: 0,
     taxEnabled: defaultTax.enabled,
@@ -99,6 +175,7 @@ export function InvoiceForm({
   bookings,
   business,
   defaultTax,
+  fxRates,
   suggestedInvoiceNo,
   today,
   invoice = null,
@@ -106,6 +183,7 @@ export function InvoiceForm({
   bookings: InvoiceBookingOption[];
   business: AppSettings["business"];
   defaultTax: AppSettings["gst"];
+  fxRates: Record<string, number>;
   suggestedInvoiceNo: string;
   today: string;
   invoice?: Invoice | null;
@@ -119,7 +197,7 @@ export function InvoiceForm({
     defaultValues: initialValues(today, invoice, defaultTax, suggestedInvoiceNo),
   });
   const payments = useFieldArray({ control, name: "payments" });
-  const attachments = useFieldArray({ control, name: "attachments" });
+  const attachments = useFieldArray({ control, name: "attachments", keyName: "fieldKey" });
   const values = useWatch({ control }) as InvoiceInput;
   const totals = calcTotals({
     lineTotals: [toMinor(Number(values.package.totalPrice) || 0)],
@@ -134,20 +212,65 @@ export function InvoiceForm({
     totals.total - values.payments.reduce((sum, payment) => sum + toMinor(Number(payment.amount) || 0), 0),
     0,
   );
+  const currencyField = register("currency");
+
+  function convertInvoiceCurrency(nextCurrency: CurrencyCode) {
+    const currentCurrency = values.currency;
+    if (currentCurrency === nextCurrency) return true;
+
+    const hasAmounts = Number(values.package.totalPrice) > 0
+      || Number(values.package.cost) > 0
+      || Number(values.discount) > 0
+      || values.payments.some((payment) => Number(payment.amount) > 0);
+    const sourceRate = currentCurrency === "INR" ? 1 : fxRates[currentCurrency];
+    const targetRate = nextCurrency === "INR" ? 1 : fxRates[nextCurrency];
+    if (hasAmounts && (!sourceRate || !targetRate || sourceRate <= 0 || targetRate <= 0)) {
+      toast.error("Configure exchange rates before changing the currency for an invoice with amounts");
+      return false;
+    }
+
+    const convert = (amount: number) => hasAmounts
+      ? convertMinorAmount(toMinor(Number(amount) || 0), sourceRate, targetRate) / 100
+      : Number(amount) || 0;
+    setValue("package.totalPrice", convert(values.package.totalPrice));
+    setValue("package.cost", convert(values.package.cost));
+    setValue("discount", convert(values.discount));
+    values.payments.forEach((payment, index) => {
+      setValue(`payments.${index}.amount`, convert(payment.amount));
+    });
+    setValue("currency", nextCurrency);
+    return true;
+  }
+
+  function changeCurrency(event: ChangeEvent<HTMLSelectElement>) {
+    const nextCurrency = event.target.value as CurrencyCode;
+    if (!convertInvoiceCurrency(nextCurrency)) {
+      event.currentTarget.value = values.currency;
+      return;
+    }
+    currencyField.onChange(event);
+  }
 
   function selectBooking(id: string) {
-    setValue("bookingId", id);
     const booking = bookings.find((item) => item.id === id);
+    if (booking && !convertInvoiceCurrency(booking.currency)) return;
+    setValue("bookingId", id);
     if (!booking) return;
     setValue("tripDestination", booking.destination);
     setValue("tripStatus", booking.status === "completed" ? "completed" : booking.status === "cancelled" ? "cancelled" : "upcoming");
     setValue("customer.name", booking.contactName || "");
+    setValue("package.name", booking.packageName || "");
     setValue("package.destination", booking.destination);
     setValue("package.startDate", dateValue(booking.travelStart));
     setValue("package.endDate", dateValue(booking.travelEnd));
+    setValue("package.duration", formatDuration(booking.travelStart, booking.travelEnd));
     setValue("package.memberCount", Math.max(booking.memberCount, 1));
     setValue("package.totalPrice", booking.totalAmount / 100);
+    setValue("package.cost", (booking.defaultPackageCost ?? 0) / 100);
     setValue("currency", booking.currency);
+    if (booking.packageCostConversionMissing) {
+      toast.error("Could not convert the package default cost to the invoice currency. Enter the cost manually.");
+    }
   }
 
   async function uploadDocuments(files: FileList | null) {
@@ -221,6 +344,11 @@ export function InvoiceForm({
                   ))}
                 </select>
               </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="packageName">Package Name</Label>
+                <Input id="packageName" maxLength={80} {...register("package.name")} />
+                <ErrorText message={errors.package?.name?.message} />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="tripDestination">Trip Destination</Label>
                 <Input id="tripDestination" {...register("tripDestination")} />
@@ -276,14 +404,25 @@ export function InvoiceForm({
                 <Input id="packageEnd" type="date" {...register("package.endDate")} />
                 <ErrorText message={errors.package?.endDate?.message} />
               </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="packageDuration">Duration</Label>
+                <Input id="packageDuration" type="text" maxLength={80} placeholder="e.g. 5 days, 4 nights" {...register("package.duration")} />
+                <ErrorText message={errors.package?.duration?.message} />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="membersCount">Number of Members</Label>
                 <Input id="membersCount" type="number" min={1} {...register("package.memberCount", { valueAsNumber: true })} />
                 <ErrorText message={errors.package?.memberCount?.message} />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="packageCost">Package Cost ({values.currency})</Label>
+                <Input id="packageCost" type="number" min={0} step="0.01" {...register("package.cost", { valueAsNumber: true })} />
+                <p className="text-muted-foreground text-xs">Defaults from the linked package; edit to override this invoice’s cost.</p>
+                <ErrorText message={errors.package?.cost?.message} />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="currency">Currency</Label>
-                <select id="currency" className={selectClass} {...register("currency")}>
+                <select id="currency" className={selectClass} {...currencyField} onChange={changeCurrency}>
                   {CURRENCY_CODES.map((code) => <option key={code} value={code}>{code} ({CURRENCIES[code].name})</option>)}
                 </select>
               </div>
@@ -333,6 +472,7 @@ export function InvoiceForm({
             <CardContent className="space-y-3">
               {payments.fields.map((field, index) => (
                 <div key={field.id} className="grid gap-3 rounded-md border p-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <input type="hidden" {...register(`payments.${index}.paymentId`)} />
                   <div className="space-y-2">
                     <Label htmlFor={`payment-${index}`}>Advance Paid ({CURRENCIES[values.currency].symbol})</Label>
                     <Input id={`payment-${index}`} type="number" min={0.01} step="0.01" {...register(`payments.${index}.amount`, { valueAsNumber: true })} />
@@ -383,11 +523,18 @@ export function InvoiceForm({
                 }}
               />
               {attachments.fields.map((attachment, index) => (
-                <div key={attachment.id} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-sm">
-                  <span className="min-w-0 truncate">{attachment.name}</span>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${attachment.name}`} onClick={() => attachments.remove(index)}>
-                    <Trash2 className="size-4" />
-                  </Button>
+                <div key={attachment.fieldKey} className="min-w-0 rounded-md bg-muted px-3 py-2 text-sm">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="min-w-0 truncate">{attachment.name}</span>
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${attachment.name}`} onClick={() => attachments.remove(index)}>
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                  <AttachmentPreview
+                    attachment={attachment}
+                    invoiceId={invoice?.id}
+                    file={localAttachmentFiles[attachment.id]}
+                  />
                 </div>
               ))}
               <ErrorText message={errors.attachments?.message} />

@@ -1,6 +1,6 @@
 import type { CurrencyCode } from "./currency";
 
-/** Stored on every payment, expense and refund */
+/** Stores an original-currency amount and its exchange-rate snapshot. */
 export type MoneyEntry = {
   currency: CurrencyCode;
   amount: number;       // minor units in the ORIGINAL currency
@@ -10,6 +10,25 @@ export type MoneyEntry = {
   fxFeeInr: number;     // paise: bank / conversion charges
   netInrAmount: number; // paise: inrAmount − fxFeeInr
 };
+
+export function convertMinorAmount(amount: number, fromRateInr: number, toRateInr: number) {
+  if (!Number.isFinite(amount) || !Number.isFinite(fromRateInr) || !Number.isFinite(toRateInr)
+    || fromRateInr <= 0 || toRateInr <= 0) {
+    throw new Error("Valid exchange rates are required to convert this amount");
+  }
+  return Math.round((amount * fromRateInr) / toRateInr);
+}
+
+export function convertMoneyEntryAmount(
+  entry: MoneyEntry,
+  currency: CurrencyCode,
+  rates: Record<string, number>,
+): number | undefined {
+  if (entry.currency === currency) return entry.amount;
+  const toRateInr = currency === "INR" ? 1 : rates[currency];
+  if (!toRateInr) return undefined;
+  return convertMinorAmount(entry.amount, entry.rate, toRateInr);
+}
 
 type BuildArgs = {
   currency: CurrencyCode;

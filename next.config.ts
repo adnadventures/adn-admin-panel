@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
   experimental: {
+    proxyClientMaxBodySize: "12mb",
     serverActions: {
       allowedOrigins: [
         "localhost:3000",

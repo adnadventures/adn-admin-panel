@@ -258,6 +258,8 @@ export function PackageForm({
       maxPersons: pkg?.maxPersons ?? 0,
       currency: pkg?.price.currency ?? "INR",
       price: pkg ? fromMinor(pkg.price.amount) : 0,
+      cost: pkg?.cost ? fromMinor(pkg.cost.amount) : 0,
+      costCurrency: pkg?.cost?.currency ?? pkg?.price.currency ?? "INR",
       extraTiers: (pkg?.priceTiers ?? [])
         .slice(1)
         .map((t) => ({ fromPersons: t.fromPersons, price: fromMinor(t.amount) })),
@@ -429,6 +431,22 @@ export function PackageForm({
                   ≈ {formatMoney(Math.round(toMinor(price) * rate), "INR")} per person at your default rate
                 </p>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost">Default package cost per booking</Label>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+                <Input id="cost" type="number" step="0.01" min={0} {...register("cost", { valueAsNumber: true })} />
+                <select id="costCurrency" className={selectClass} {...register("costCurrency")}>
+                  {CURRENCY_CODES.map((code) => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Used as the starting cost on invoices linked to this package. You can override it per invoice.
+              </p>
+              <Err m={errors.cost?.message} />
+              <Err m={errors.costCurrency?.message} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>

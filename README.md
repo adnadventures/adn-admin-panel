@@ -32,3 +32,24 @@ Invoice storage reuses `R2_ACCOUNT_ID` and `R2_ENDPOINT`, but not the package
 image bucket or its public URL. Do not enable public access or configure a
 public domain for the invoice bucket. Downloads are served only through the
 authenticated application route.
+
+# Finance
+
+The Finance page is available to admins and managers. Weekly reports use
+Monday–Sunday; monthly and custom date ranges are also available. Invoice
+revenue and pending balances are grouped by invoice issue date, while advances
+are grouped by payment date. Amounts remain separated by currency.
+
+Set a default cost per booking on each package. Linked invoices prefill that
+cost and allow an override; the saved cost and payment exchange rates are
+snapshotted. Finance reports show package revenue, direct package cost, and
+profit by package, and include direct costs in expenses. Manually entered
+expenses can include a private PDF or image receipt stored in the invoice R2
+bucket.
+
+Deploy the Firestore indexes in `firestore.indexes.json` when applying schema
+changes:
+
+```sh
+firebase deploy --only firestore:indexes
+```

@@ -54,19 +54,19 @@ export function InvoiceDocument({
             />
           </div>
           <div className="min-w-0 break-words">
-            <p className="font-serif text-2xl font-bold tracking-wide uppercase">
+            <p className="text-2xl font-bold tracking-wide uppercase">
               {business.name || "ADN ADVENTURES"}
             </p>
-            <p className="font-serif text-lg tracking-widest uppercase">
+            <p className="text-lg tracking-widest uppercase">
               Tours &amp; Travels
             </p>
             {business.tagline && (
-              <p className="font-serif text-sm text-slate-600">
+              <p className="text-sm text-slate-600">
                 {business.tagline}
               </p>
             )}
-            <p className="font-serif text-sm text-slate-600">
-              Travel Invoice / Payment Receipt
+            <p className="text-sm text-slate-600">
+              MSME Registration No: UDAYAM-PY-03-0062646
             </p>
             {business.gstin && (
               <p className="mt-1 text-xs">GSTIN: {business.gstin}</p>
@@ -79,7 +79,7 @@ export function InvoiceDocument({
           </div>
         </header>
 
-        <div className="space-y-2 border-b border-slate-300 py-3 font-serif text-sm">
+        <div className="space-y-2 border-b border-slate-300 py-3 text-sm">
           <div className="flex justify-between gap-4">
             <span>
               Invoice No: <strong>{values.invoiceNo}</strong>
@@ -104,7 +104,7 @@ export function InvoiceDocument({
           </div>
         </div>
 
-        <section className="border-b border-slate-300 py-3 font-serif text-sm">
+        <section className="border-b border-slate-300 py-3 text-sm">
           <h2 className="mb-2 text-base font-bold">Client Details</h2>
           <p>
             <strong>Name:</strong> {values.customer.name || "—"}
@@ -117,10 +117,14 @@ export function InvoiceDocument({
           </p>
         </section>
 
-        <section className="border-b border-slate-300 py-3 font-serif text-sm">
+        <section className="border-b border-slate-300 py-3 text-sm">
           <h2 className="mb-2 text-base font-bold">Package Details</h2>
           <table className="w-full border-collapse">
             <tbody>
+              <InvoiceRow
+                label="Package Name"
+                value={values.package.name || "—"}
+              />
               <InvoiceRow
                 label="Package Destination"
                 value={values.package.destination || "—"}
@@ -129,6 +133,7 @@ export function InvoiceDocument({
                 label="Package Date"
                 value={`${values.package.startDate ? formatDate(values.package.startDate) : ""} to ${values.package.endDate ? formatDate(values.package.endDate) : ""}`}
               />
+              <InvoiceRow label="Duration" value={values.package.duration || "—"} />
               <InvoiceRow
                 label="Number of Members"
                 value={`${Number(values.package.memberCount) || 0} Members`}
@@ -199,7 +204,7 @@ export function InvoiceDocument({
         data-pdf-page
         className="min-w-0 border bg-white p-5 shadow-sm sm:p-8"
       >
-        <section className="space-y-3 border-b border-slate-300 py-3 font-serif text-sm">
+        <section className="space-y-3 border-b border-slate-300 py-3 text-sm">
           <TermsSection title="Payment Terms" value={values.paymentTerms} />
           <TermsSection
             title="Cancellation Policy"
@@ -212,7 +217,7 @@ export function InvoiceDocument({
           <TermsSection title="Important Notes" value={values.importantNotes} />
         </section>
 
-        <footer className="pt-8 text-right font-serif">
+        <footer className="pt-8 text-right">
           <div className="mb-1 ml-auto flex h-[82px] w-56 items-end justify-center border-b border-slate-400 bg-transparent">
             <Image
               src="/adn-signature.png"

@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireUser } from "@/lib/auth/session";
 import { getInvoice } from "@/lib/data/invoices";
 import { fromMinor } from "@/lib/finance/currency";
+import { formatDuration } from "@/lib/format";
 import type { InvoiceInput } from "@/lib/validators/invoice";
 import { InvoiceDocument } from "../invoice-document";
 import { InvoiceActions } from "./invoice-actions";
@@ -29,11 +30,14 @@ export default async function InvoicePage({
       address: invoice.customer.address,
     },
     package: {
+      name: invoice.package.name ?? "",
       destination: invoice.package.destination,
       startDate: invoice.package.startDate.slice(0, 10),
       endDate: invoice.package.endDate.slice(0, 10),
+      duration: invoice.package.duration ?? formatDuration(invoice.package.startDate, invoice.package.endDate),
       memberCount: invoice.package.memberCount,
       totalPrice: fromMinor(invoice.package.totalPrice),
+      cost: invoice.package.cost ? fromMinor(invoice.package.cost.amount) : 0,
     },
     currency: invoice.currency,
     discount: fromMinor(invoice.discount),
@@ -41,6 +45,7 @@ export default async function InvoicePage({
     taxRatePercent: invoice.tax.rateBps / 100,
     taxMode: invoice.tax.mode,
     payments: invoice.payments.map((payment) => ({
+      paymentId: payment.paymentId,
       amount: fromMinor(payment.amount),
       date: payment.date.slice(0, 10),
     })),

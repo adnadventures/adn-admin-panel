@@ -21,11 +21,14 @@ export const invoiceInputSchema = z.object({
     address: z.string().trim().min(2, "Enter the client address").max(500),
   }),
   package: z.object({
+    name: z.string().trim().max(80, "Max 80 characters"),
     destination: z.string().trim().min(2, "Enter the package destination").max(100),
     startDate: date,
     endDate: date,
+    duration: z.string().trim().max(80, "Max 80 characters"),
     memberCount: z.number().int().min(1, "At least 1 member").max(500),
     totalPrice: z.number().min(0, "Cannot be negative").max(1_000_000_000),
+    cost: z.number().min(0, "Cannot be negative").max(1_000_000_000),
   }),
   currency: z.enum(CURRENCY_CODES),
   discount: z.number().min(0, "Cannot be negative").max(1_000_000_000),
@@ -33,6 +36,7 @@ export const invoiceInputSchema = z.object({
   taxRatePercent: z.number().min(0).max(100),
   taxMode: z.enum(["exclusive", "inclusive"]),
   payments: z.array(z.object({
+    paymentId: z.string().uuid().optional(),
     amount: z.number().positive("Enter a payment amount").max(1_000_000_000),
     date,
   })).max(20, "Add no more than 20 payments"),

@@ -65,6 +65,7 @@ export type TravelPackage = Meta & {
   minPersons: number;
   maxPersons: number;     // 0 = no limit
   price: Money;           // base per-person price (the first tier)
+  cost?: MoneyEntry | null;
   priceTiers: PriceTier[]; // sorted, first tier starts at minPersons
   inclusions: string[];
   exclusions: string[];
@@ -122,7 +123,7 @@ export type Member = Meta & {
 
 export type InvoiceStatus = "draft" | "sent" | "partially_paid" | "paid" | "cancelled";
 
-export type InvoicePayment = { amount: number; date: ISO }; // amount in minor units
+export type InvoicePayment = { paymentId?: string; amount: number; date: ISO; money?: MoneyEntry }; // amount in minor units
 export type InvoiceAttachmentContentType =
   | "application/pdf"
   | "image/jpeg"
@@ -145,11 +146,14 @@ export type Invoice = Meta & {
   tripStatus: "upcoming" | "completed" | "cancelled";
   customer: { id: string | null; name: string; email?: string; phone: string; address: string };
   package: {
+    name?: string;
     destination: string;
     startDate: ISO;
     endDate: ISO;
+    duration?: string;
     memberCount: number;
     totalPrice: number;
+    cost?: MoneyEntry | null;
   };
   business: { name: string; tagline?: string; gstin: string; address: string }; // snapshot
   currency: CurrencyCode;
@@ -176,11 +180,14 @@ export type InvoiceBookingOption = {
   title: string;
   contactName: string;
   destination: string;
+  packageName?: string;
   travelStart: string;
   travelEnd: string;
   memberCount: number;
   totalAmount: number;
   currency: CurrencyCode;
+  defaultPackageCost?: number;
+  packageCostConversionMissing?: boolean;
   status: BookingStatus;
 };
 
@@ -205,3 +212,21 @@ export type Transaction = Meta & {
 };
 
 export type ExpenseCategory = Meta & { name: string; active: boolean };
+
+export type ExpenseReceipt = {
+  id: string;
+  name: string;
+  objectPath: string;
+  contentType: "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
+  size: number;
+};
+
+export type FinanceExpense = Meta & {
+  date: ISO;
+  description: string;
+  category: string;
+  vendor: string;
+  money: MoneyEntry;
+  note: string;
+  receipt: ExpenseReceipt | null;
+};
