@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Check, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { getPackage } from "@/lib/data/packages";
 import { formatMoney } from "@/lib/finance/currency";
 import { formatDate } from "@/lib/format";
@@ -61,7 +61,7 @@ function ListingsCard({
 }
 
 export default async function PackageDetailPage({ params }: { params: Promise<{ id: string }> }) {
-    const user = await requireUser();
+    const user = await requireModule("packages");
     const { id } = await params;
     const [pkg, settings] = await Promise.all([getPackage(id), getSettings()]);
     if (!pkg) notFound();
@@ -77,7 +77,7 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                 description={`${pkg.destination} · ${pkg.days}D / ${pkg.nights}N`}
                 actions={
                     <>
-                        {user.role !== "staff" && <PackageActions pkg={pkg} />}
+                        {(user.role === "admin" || user.role === "manager") && <PackageActions pkg={pkg} />}
                     </>
                 }
             />

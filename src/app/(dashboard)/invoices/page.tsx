@@ -2,12 +2,12 @@ import Link from "next/link";
 import { FilePlus2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { buttonVariants } from "@/components/ui/button";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { listInvoices } from "@/lib/data/invoices";
 import { InvoiceSearch } from "./invoice-search";
 
 export default async function InvoicesPage() {
-  const user = await requireUser();
+  const user = await requireModule("invoices");
   const invoices = await listInvoices();
   const canManage = user.role === "admin" || user.role === "manager";
 

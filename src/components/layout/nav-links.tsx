@@ -2,15 +2,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import type { Role } from "@/types/roles";
+import type { SessionUser } from "@/types/roles";
+import { canAccessNavItem } from "./nav-items";
 import { NAV_ITEMS } from "./nav-items";
 
-export function NavLinks({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
+export function NavLinks({ user, onNavigate }: { user: SessionUser; onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
     <nav className="flex flex-col gap-1">
-      {NAV_ITEMS.filter((i) => i.roles.includes(role)).map((item) => {
+      {NAV_ITEMS.filter((item) => canAccessNavItem(user, item)).map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
           <Link

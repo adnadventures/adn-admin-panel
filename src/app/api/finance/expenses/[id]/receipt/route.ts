@@ -1,4 +1,5 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { canAccessModule } from "@/components/layout/nav-items";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getExpense } from "@/lib/data/expenses";
 import { createInvoiceStorageConfig, invoiceObjectStorageError } from "@/lib/r2/invoice-storage";
@@ -15,8 +16,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const user = await getCurrentUser();
-  if (!user || !["admin", "manager"].includes(user.role)) {
+  if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!canAccessModule(user, "finance")) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;

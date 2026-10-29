@@ -41,7 +41,7 @@ export function LoginForm() {
       await signOut(clientAuth); // only the server cookie is used from here on
 
       if (res.status === 403) {
-        toast.error("Your account has no role assigned. Contact an admin.");
+        toast.error("Your account has no access assigned. Contact an admin.");
         return;
       }
       if (!res.ok) throw new Error("session");

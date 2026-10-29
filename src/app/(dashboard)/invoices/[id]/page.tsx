@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { getInvoice } from "@/lib/data/invoices";
 import { fromMinor } from "@/lib/finance/currency";
 import { formatDuration } from "@/lib/format";
@@ -13,7 +13,7 @@ export default async function InvoicePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireModule("invoices");
   const { id } = await params;
   const invoice = await getInvoice(id);
   if (!invoice) notFound();

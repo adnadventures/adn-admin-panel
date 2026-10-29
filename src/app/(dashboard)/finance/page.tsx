@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { listBookings } from "@/lib/data/bookings";
 import { listExpenses } from "@/lib/data/expenses";
 import { listPackages } from "@/lib/data/packages";
@@ -9,7 +9,7 @@ import { todayIST } from "@/lib/format";
 import { FinanceDashboard } from "./finance-dashboard";
 
 export default async function Page() {
-  await requireUser(["admin", "manager"]);
+  await requireModule("finance");
   const [bookings, packages, allExpenses, settings] = await Promise.all([
     listBookings(),
     listPackages(),

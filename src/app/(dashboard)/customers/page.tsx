@@ -1,10 +1,10 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { listCustomersPage } from "@/lib/data/customers";
 import { CustomersView } from "./customers-view";
 
 export default async function CustomersPage() {
-  const user = await requireUser();
+  const user = await requireModule("customers");
   const initial = await listCustomersPage();
 
   return (

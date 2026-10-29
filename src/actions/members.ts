@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { blockReason } from "@/lib/booking-utils";
 import { toMinor } from "@/lib/finance/currency";
 import {
@@ -47,7 +47,7 @@ function activeSource(s: FirebaseFirestore.DocumentSnapshot) {
 }
 
 export async function addMember(bookingId: string, input: unknown, force = false): Promise<Result> {
-  const user = await requireUser(); // staff, manager and admin
+  const user = await requireModule("bookings"); // staff, manager and admin
   const parsed = memberInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
@@ -168,7 +168,7 @@ export async function addMember(bookingId: string, input: unknown, force = false
 }
 
 export async function updateMember(bookingId: string, memberId: string, input: unknown): Promise<Result> {
-  const user = await requireUser();
+  const user = await requireModule("bookings");
   const parsed = memberInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
@@ -228,7 +228,7 @@ export async function updateMember(bookingId: string, memberId: string, input: u
 
 /** Frees the slot but keeps the record. Admin and Manager only. */
 export async function cancelMember(bookingId: string, memberId: string): Promise<Result> {
-  const user = await requireUser(["admin", "manager"]);
+  const user = await requireModule("bookings", ["admin", "manager"]);
 
   try {
     await adminDb.runTransaction(async (tx) => {

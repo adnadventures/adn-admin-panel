@@ -1,11 +1,16 @@
 import { getCurrentUser } from "@/lib/auth/session";
+import { canAccessModule } from "@/components/layout/nav-items";
 
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function GET(request: Request) {
-  if (!(await getCurrentUser())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!canAccessModule(user, "packages")) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const photoUrl = new URL(request.url).searchParams.get("url");

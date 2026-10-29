@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { adminDb } from "@/lib/firebase/admin";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { listCustomersPage } from "@/lib/data/customers";
 import {
   COL, auditEntry, createMeta, deleteMeta, toSearchName, updateMeta,
@@ -61,13 +61,13 @@ async function findDuplicate(f: ReturnType<typeof baseFields>, exceptId?: string
 
 /* ---------- list (called by the client for search and load more) ---------- */
 export async function fetchCustomers(query: string, cursor?: string | null) {
-  await requireUser();
+  await requireModule("customers");
   return listCustomersPage(query, cursor);
 }
 
 /* ---------- create ---------- */
 export async function createCustomer(input: unknown, force = false): Promise<Result> {
-  const user = await requireUser();
+  const user = await requireModule("customers");
 
   const parsed = customerInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
@@ -99,7 +99,7 @@ export async function createCustomer(input: unknown, force = false): Promise<Res
 
 /* ---------- update ---------- */
 export async function updateCustomer(id: string, input: unknown, force = false): Promise<Result> {
-  const user = await requireUser();
+  const user = await requireModule("customers");
 
   const parsed = customerInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
@@ -142,7 +142,7 @@ export async function updateCustomer(id: string, input: unknown, force = false):
 
 /* ---------- delete (soft) ---------- */
 export async function deleteCustomer(id: string): Promise<Result> {
-  const user = await requireUser([...MANAGEMENT]);
+  const user = await requireModule("customers", [...MANAGEMENT]);
 
   const ref = adminDb.collection(COL.customers).doc(id);
   const snap = await ref.get();
@@ -181,7 +181,7 @@ export async function deleteCustomer(id: string): Promise<Result> {
 
 /* ---------- reveal a full ID number (Admin / Manager, always logged) ---------- */
 export async function revealCustomerId(customerId: string, docId: string) {
-  const user = await requireUser([...MANAGEMENT]);
+  const user = await requireModule("customers", [...MANAGEMENT]);
 
   const snap = await adminDb.collection(COL.customers).doc(customerId).get();
   if (!snap.exists || snap.data()?.isDeleted) return { ok: false as const, error: "Customer not found" };

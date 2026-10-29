@@ -33,9 +33,19 @@ image bucket or its public URL. Do not enable public access or configure a
 public domain for the invoice bucket. Downloads are served only through the
 authenticated application route.
 
+# Employee access
+
+Admins can create employee email/password accounts in **Settings → Employee
+access**, select one or more sidebar modules, update access later, or disable an
+account. Employees use the existing login page. Module grants are enforced on
+server-rendered pages, server actions, and protected file routes; hiding a
+sidebar link is not the only access check. Employees retain employee-level
+permissions within assigned modules, and Settings remains admin-only.
+
 # Finance
 
-The Finance page is available to admins and managers. Weekly reports use
+The Finance page is available to admins and managers, and to employees explicitly
+granted the Finance module. Weekly reports use
 Monday–Sunday; monthly and custom date ranges are also available. Invoice
 revenue and pending balances are grouped by invoice issue date, while advances
 are grouped by payment date. Amounts remain separated by currency.

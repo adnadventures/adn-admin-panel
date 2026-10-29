@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { formatDate } from "@/lib/format";
 import { CustomerActions } from "./customer-actions";
 import { IdProofs } from "./id-proofs";
@@ -21,7 +21,7 @@ function Field({ label, value }: { label: string; value?: string }) {
 }
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
+  const user = await requireModule("customers");
   const { id } = await params;
   const customer = await getCustomer(id);
   const trips = await listCustomerTrips(id);
@@ -50,7 +50,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <Card>
           <CardHeader><CardTitle>ID proofs</CardTitle></CardHeader>
           <CardContent>
-            <IdProofs customerId={customer.id} docs={customer.idDocs} canReveal={user.role !== "staff"} />
+            <IdProofs customerId={customer.id} docs={customer.idDocs} canReveal={user.role === "admin" || user.role === "manager"} />
           </CardContent>
         </Card>
 

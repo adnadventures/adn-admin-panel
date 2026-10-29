@@ -3,7 +3,8 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminAuth } from "@/lib/firebase/admin";
-import { ROLES, type Role, type SessionUser } from "@/types/roles";
+import { canAccessModule, getDefaultPath } from "@/components/layout/nav-items";
+import { isModuleKey, ROLES, type ModuleKey, type Role, type SessionUser } from "@/types/roles";
 
 export const SESSION_COOKIE = "adn_session";
 export const SESSION_MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
@@ -17,12 +18,17 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     const decoded = await adminAuth.verifySessionCookie(cookie, true);
     const role = decoded.role as Role | undefined;
     if (!role || !ROLES.includes(role)) return null;
+    const modules = role === "employee" && Array.isArray(decoded.modules)
+      ? decoded.modules.filter(isModuleKey)
+      : undefined;
+    if (role === "employee" && !modules?.length) return null;
 
     return {
       uid: decoded.uid,
       email: decoded.email ?? "",
       name: (decoded.name as string | undefined) ?? decoded.email ?? "User",
       role,
+      ...(modules ? { modules } : {}),
     };
   } catch {
     return null;
@@ -34,5 +40,12 @@ export async function requireUser(allowed?: Role[]): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (allowed && !allowed.includes(user.role)) redirect("/");
+  return user;
+}
+
+/** Enforces module grants on server-rendered pages and server actions. */
+export async function requireModule(module: ModuleKey, allowed?: Role[]): Promise<SessionUser> {
+  const user = await requireUser(allowed);
+  if (!canAccessModule(user, module)) redirect(getDefaultPath(user));
   return user;
 }

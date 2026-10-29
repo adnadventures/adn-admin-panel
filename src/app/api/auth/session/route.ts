@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE, SESSION_MAX_AGE_MS } from "@/lib/auth/session";
+import { isModuleKey, ROLES } from "@/types/roles";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -12,9 +13,15 @@ export async function POST(req: Request) {
   try {
     const decoded = await adminAuth.verifyIdToken(idToken);
 
-    // Only users with an assigned role may log in
-    if (!decoded.role) {
+    const role = decoded.role;
+    if (typeof role !== "string" || !ROLES.includes(role as typeof ROLES[number])) {
       return NextResponse.json({ error: "No role assigned" }, { status: 403 });
+    }
+    if (
+      role === "employee"
+      && (!Array.isArray(decoded.modules) || !decoded.modules.some(isModuleKey))
+    ) {
+      return NextResponse.json({ error: "No modules assigned" }, { status: 403 });
     }
 
     // Only accept a fresh sign-in (within 5 minutes)

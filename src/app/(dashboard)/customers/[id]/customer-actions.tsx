@@ -20,7 +20,7 @@ export function CustomerActions({ customer, role }: { customer: Customer; role: 
       <Button variant="outline" onClick={() => setEditOpen(true)}>
         <Pencil className="mr-2 size-4" /> Edit
       </Button>
-      {role !== "staff" && (
+      {(role === "admin" || role === "manager") && (
         <Button variant="destructive" onClick={() => setDelOpen(true)}>
           <Trash2 className="mr-2 size-4" /> Delete
         </Button>

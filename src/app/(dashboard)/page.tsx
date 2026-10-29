@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { listBookings } from "@/lib/data/bookings";
 import { listExpenses } from "@/lib/data/expenses";
 import { listPackages } from "@/lib/data/packages";
@@ -25,15 +25,15 @@ function lastSixMonths(today: string) {
 }
 
 export default async function DashboardPage() {
-  const user = await requireUser();
+  const user = await requireModule("dashboard");
   const today = todayIST();
   const months = lastSixMonths(today);
   const monthKeys = new Set(months.map(({ key }) => key));
   const [bookings, packages, expenses, settings] = await Promise.all([
     listBookings(),
     listPackages(),
-    user.role === "staff" ? Promise.resolve([]) : listExpenses(),
-    user.role === "staff" ? Promise.resolve(null) : getSettings(),
+    user.role === "admin" || user.role === "manager" ? listExpenses() : Promise.resolve([]),
+    user.role === "admin" || user.role === "manager" ? getSettings() : Promise.resolve(null),
   ]);
   const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
   const expensesByBooking = new Map<string, typeof expenses>();
@@ -152,7 +152,7 @@ export default async function DashboardPage() {
         activeTravelers={activeTravelers}
         statuses={statuses}
         upcoming={upcoming}
-        showFinancials={user.role !== "staff"}
+        showFinancials={user.role === "admin" || user.role === "manager"}
       />
     </>
   );

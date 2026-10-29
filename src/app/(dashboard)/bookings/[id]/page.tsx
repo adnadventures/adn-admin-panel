@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { CATEGORY_LABEL, GENDER_LABEL } from "@/lib/booking-utils";
 import { getBooking, listMembers } from "@/lib/data/bookings";
 import { listExpensesForBooking } from "@/lib/data/expenses";
@@ -80,7 +80,7 @@ function BookingProfitability({
 }
 
 export default async function BookingDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
+  const user = await requireModule("bookings");
   const { id } = await params;
   const booking = await getBooking(id);
   if (!booking) notFound();
@@ -89,8 +89,8 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
     listMembers(id),
     listOrderSources(),
     getPackage(booking.packageId),
-    user.role === "staff" ? Promise.resolve([]) : listExpensesForBooking(id),
-    user.role === "staff" ? Promise.resolve(null) : getSettings(),
+    user.role === "admin" || user.role === "manager" ? listExpensesForBooking(id) : Promise.resolve([]),
+    user.role === "admin" || user.role === "manager" ? getSettings() : Promise.resolve(null),
   ]);
 
   const active = members.filter((m) => m.status === "active");
@@ -117,7 +117,7 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
       <PageHeader
         title={booking.title}
         description={`${booking.bookingNo} · ${booking.packageName} · ${booking.destination}`}
-        actions={user.role !== "staff" ? <BookingActions booking={booking} /> : undefined}
+        actions={user.role === "admin" || user.role === "manager" ? <BookingActions booking={booking} /> : undefined}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -168,7 +168,7 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
-      {user.role !== "staff" && (
+      {(user.role === "admin" || user.role === "manager") && (
         <BookingProfitability
           revenue={booking.totalAmount}
           memberCount={booking.memberCount}
@@ -183,9 +183,9 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
         booking={booking}
         members={members}
         sources={sources.filter((s) => s.active).map((s) => ({ id: s.id, name: s.name }))}
-        canManage={user.role !== "staff"}
+        canManage={user.role === "admin" || user.role === "manager"}
       />
-      {user.role !== "staff" && (
+      {(user.role === "admin" || user.role === "manager") && (
         <BookingExpensesPanel
           bookingId={id}
           currency={booking.currency}

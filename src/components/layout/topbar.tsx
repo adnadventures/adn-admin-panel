@@ -43,7 +43,7 @@ export function Topbar({ user }: { user: SessionUser }) {
             <Brand />
           </SheetHeader>
           <div className="px-3">
-            <NavLinks role={user.role} onNavigate={() => setOpen(false)} />
+            <NavLinks user={user} onNavigate={() => setOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>

@@ -1,11 +1,11 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { requireUser } from "@/lib/auth/session";
+import { requireModule } from "@/lib/auth/session";
 import { listBookings } from "@/lib/data/bookings";
 import { todayIST } from "@/lib/format";
 import { BookingsAnalytics } from "./bookings-analytics";
 
 export default async function Page() {
-  await requireUser(["admin", "manager"]);
+  await requireModule("analytics");
   const bookings = await listBookings();
   const reportBookings = bookings.map((booking) => ({
     id: booking.id,

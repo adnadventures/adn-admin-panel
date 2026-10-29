@@ -19,7 +19,13 @@ import { formatDate } from "@/lib/format";
 import type { OrderSource } from "@/types/models";
 import { OrderSourceForm } from "./order-source-form";
 
-export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
+export function OrderSourcesTable({
+    data,
+    canManage,
+}: {
+    data: OrderSource[];
+    canManage: boolean;
+}) {
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<OrderSource | null>(null);
     const [deleting, setDeleting] = useState<OrderSource | null>(null);
@@ -28,30 +34,7 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
     const openCreate = () => { setEditing(null); setFormOpen(true); };
     const openEdit = (s: OrderSource) => { setEditing(s); setFormOpen(true); };
 
-    const columns: ColumnDef<OrderSource>[] = [
-        { accessorKey: "name", header: "Name", cell: (c) => <span className="font-medium">{c.getValue<string>()}</span> },
-        {
-            id: "status",
-            header: "Status",
-            accessorFn: (r) => (r.active ? "Active" : "Inactive"),
-            cell: (c) => (
-                <Badge variant={c.row.original.active ? "default" : "secondary"}>
-                    {c.getValue<string>()}
-                </Badge>
-            ),
-        },
-        {
-            accessorKey: "notes",
-            header: "Notes",
-            enableSorting: false,
-            cell: (c) => <span className="text-muted-foreground">{c.getValue<string>() || "—"}</span>,
-        },
-        {
-            accessorKey: "createdAt",
-            header: "Created",
-            cell: (c) => formatDate(c.getValue<string>()),
-        },
-        {
+    const actionColumn: ColumnDef<OrderSource> = {
             id: "actions",
             header: "",
             enableSorting: false,
@@ -76,7 +59,31 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                     </DropdownMenuContent>
                 </DropdownMenu>
             ),
+        };
+    const columns: ColumnDef<OrderSource>[] = [
+        { accessorKey: "name", header: "Name", cell: (c) => <span className="font-medium">{c.getValue<string>()}</span> },
+        {
+            id: "status",
+            header: "Status",
+            accessorFn: (r) => (r.active ? "Active" : "Inactive"),
+            cell: (c) => (
+                <Badge variant={c.row.original.active ? "default" : "secondary"}>
+                    {c.getValue<string>()}
+                </Badge>
+            ),
         },
+        {
+            accessorKey: "notes",
+            header: "Notes",
+            enableSorting: false,
+            cell: (c) => <span className="text-muted-foreground">{c.getValue<string>() || "—"}</span>,
+        },
+        {
+            accessorKey: "createdAt",
+            header: "Created",
+            cell: (c) => formatDate(c.getValue<string>()),
+        },
+        ...(canManage ? [actionColumn] : []),
     ];
 
     return (
@@ -89,7 +96,7 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                             Add your own, or start with common ones like Website, Instagram,
                             WhatsApp and Walk-in. You can edit them afterwards.
                         </p>
-                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                        {canManage ? <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                             <Button className="w-full sm:w-auto" variant="outline" disabled={seeding}
                                 onClick={() => startSeed(async () => {
                                     const res = await seedOrderSources();
@@ -98,7 +105,7 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                                 <Sparkles className="mr-2 size-4" /> {seeding ? "Adding…" : "Add common sources"}
                             </Button>
                             <Button className="w-full sm:w-auto" onClick={openCreate}><Plus className="mr-2 size-4" /> Add source</Button>
-                        </div>
+                        </div> : null}
                     </CardContent>
                 </Card>
             ) : (
@@ -106,11 +113,13 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                     columns={columns}
                     data={data}
                     searchPlaceholder="Search sources…"
-                    toolbar={<Button onClick={openCreate}><Plus className="mr-2 size-4" /> Add source</Button>}
+                    toolbar={canManage
+                        ? <Button onClick={openCreate}><Plus className="mr-2 size-4" /> Add source</Button>
+                        : undefined}
                 />
             )}
 
-            <Dialog open={formOpen} onOpenChange={setFormOpen}>
+            {canManage && <Dialog open={formOpen} onOpenChange={setFormOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>{editing ? "Edit order source" : "New order source"}</DialogTitle>
@@ -118,9 +127,9 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                     {/* Mounted only while open, so the form resets every time */}
                     <OrderSourceForm source={editing} onDone={() => setFormOpen(false)} />
                 </DialogContent>
-            </Dialog>
+            </Dialog>}
 
-            <ConfirmDialog
+            {canManage && <ConfirmDialog
                 open={!!deleting}
                 onOpenChange={(o) => !o && setDeleting(null)}
                 title="Delete this order source?"
@@ -131,7 +140,7 @@ export function OrderSourcesTable({ data }: { data: OrderSource[] }) {
                     if (res.ok) toast.success("Source deleted");
                     else toast.error(res.error);
                 }}
-            />
+            />}
         </>
     );
 }
