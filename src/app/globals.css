@@ -49,28 +49,28 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(24 10% 10%);
+  --background: hsl(36 30% 98%);
+  --foreground: hsl(24 18% 12%);
   --card: hsl(0 0% 100%);
-  --card-foreground: hsl(24 10% 10%);
+  --card-foreground: hsl(24 18% 12%);
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(24 10% 10%);
+  --popover-foreground: hsl(24 18% 12%);
 
-  --primary: hsl(41 65% 59%);
-  --primary-foreground: hsl(24 10% 10%);
-  --accent: hsl(41 65% 59%);
-  --accent-foreground: hsl(24 10% 10%);
-  --secondary: hsl(41 20% 95%);
-  --secondary-foreground: hsl(24 10% 10%);
-  --muted: hsl(41 20% 96%);
-  --muted-foreground: hsl(24 10% 46%);
+  --primary: hsl(41 65% 45%);
+  --primary-foreground: hsl(24 18% 10%);
+  --accent: hsl(41 45% 92%);
+  --accent-foreground: hsl(24 18% 12%);
+  --secondary: hsl(36 22% 94%);
+  --secondary-foreground: hsl(24 18% 12%);
+  --muted: hsl(36 22% 95%);
+  --muted-foreground: hsl(24 8% 42%);
 
   --destructive: hsl(0 84.2% 60.2%);
-  --border: hsl(41 65% 59%);
-  --input: hsl(41 20% 90%);
-  --ring: hsl(41 65% 59%);
+  --border: hsl(36 16% 86%);
+  --input: hsl(36 16% 82%);
+  --ring: hsl(41 65% 45%);
 
   --gradient-primary: linear-gradient(135deg, #dcaf53, #e4bd67);
   --gradient-hero: linear-gradient(135deg, #dcaf53 0%, #d18847 100%);
@@ -86,16 +86,16 @@
 
   --primary: hsl(41 65% 59%);
   --primary-foreground: hsl(24 15% 8%);
-  --accent: hsl(41 65% 59%);
-  --accent-foreground: hsl(24 15% 8%);
+  --accent: hsl(41 35% 22%);
+  --accent-foreground: hsl(41 20% 95%);
   --secondary: hsl(24 10% 18%);
   --secondary-foreground: hsl(41 20% 95%);
   --muted: hsl(24 10% 18%);
   --muted-foreground: hsl(41 15% 65%);
 
   --destructive: hsl(0 62.8% 50%);
-  --border: hsl(41 65% 59%);
-  --input: hsl(24 10% 20%);
+  --border: hsl(24 8% 24%);
+  --input: hsl(24 8% 30%);
   --ring: hsl(41 65% 59%);
 }
 
@@ -110,6 +110,11 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-2 ring-offset-background;
+  }
+
   html {
     @apply font-sans;
   }

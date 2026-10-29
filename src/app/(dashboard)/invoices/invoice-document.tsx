@@ -125,10 +125,6 @@ export function InvoiceDocument({
           <table className="w-full border-collapse">
             <tbody>
               <InvoiceRow
-                label="Package Name"
-                value={values.package.name || "—"}
-              />
-              <InvoiceRow
                 label="Package Destination"
                 value={values.package.destination || "—"}
               />
@@ -151,20 +147,12 @@ export function InvoiceDocument({
                   value={`- ${formatMoney(discount, currency)}`}
                 />
               )}
-              <InvoiceRow
-                label="Taxable Amount"
-                value={formatMoney(totals.taxable, currency)}
-              />
               {tax.enabled && tax.rateBps > 0 && (
                 <InvoiceRow
                   label={`GST (${tax.rateBps / 100}%)`}
                   value={formatMoney(totals.taxAmount, currency)}
                 />
               )}
-              <InvoiceRow
-                label="Invoice Total"
-                value={formatMoney(totals.total, currency)}
-              />
               <InvoiceRow
                 label="Advance Paid"
                 value={formatMoney(advancePaid, currency)}

@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CircleDollarSign,
   Users,
+  Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,8 @@ type DashboardMonth = {
   bookings: number;
   travelers: number;
   revenue: Partial<Record<CurrencyCode, number>>;
+  bookingExpenses: Partial<Record<CurrencyCode, number>>;
+  companyExpenses: Partial<Record<CurrencyCode, number>>;
   expenses: Partial<Record<CurrencyCode, number>>;
   profit: Partial<Record<CurrencyCode, number>>;
   unavailable: Partial<Record<CurrencyCode, boolean>>;
@@ -44,6 +47,8 @@ type Props = {
   months: DashboardMonth[];
   currencies: CurrencyCode[];
   revenue: Partial<Record<CurrencyCode, number>>;
+  bookingExpenses: Partial<Record<CurrencyCode, number>>;
+  companyExpenses: Partial<Record<CurrencyCode, number>>;
   expenses: Partial<Record<CurrencyCode, number>>;
   profit: Partial<Record<CurrencyCode, number>>;
   unavailable: Partial<Record<CurrencyCode, boolean>>;
@@ -56,7 +61,9 @@ type Props = {
 
 const SERIES_COLORS = {
   revenue: "#0f766e",
-  expenses: "#e11d48",
+  bookingExpenses: "#e11d48",
+  companyExpenses: "#f59e0b",
+  expenses: "#9333ea",
   profit: "#2563eb",
   bookings: "#0f766e",
   travelers: "#7c3aed",
@@ -205,6 +212,8 @@ export function DashboardOverview({
   months,
   currencies,
   revenue,
+  bookingExpenses,
+  companyExpenses,
   expenses,
   profit,
   unavailable,
@@ -220,6 +229,7 @@ export function DashboardOverview({
   const currentMonth = months.find((month) => month.key === currentMonthKey);
   const hasFinancialData = Boolean(revenue[currency] || expenses[currency] || profit[currency]);
   const financialUnavailable = Boolean(unavailable[currency]);
+  const currentMonthUnavailable = Boolean(currentMonth?.unavailable[currency]);
   const money = (value: number | undefined) => formatMoney(value ?? 0, currency);
   const currentMonthProfit = currentMonth?.unavailable[currency]
     ? "Unavailable"
@@ -233,7 +243,19 @@ export function DashboardOverview({
       values: months.map((month) => (month.revenue[currency] ?? 0) / 100),
     },
     {
-      label: "Expenses",
+      label: "Booking expenses",
+      color: SERIES_COLORS.bookingExpenses,
+      values: months.map((month) =>
+        month.unavailable[currency] ? null : (month.bookingExpenses[currency] ?? 0) / 100,
+      ),
+    },
+    {
+      label: "Company expenses",
+      color: SERIES_COLORS.companyExpenses,
+      values: months.map((month) => (month.companyExpenses[currency] ?? 0) / 100),
+    },
+    {
+      label: "Total expenses",
       color: SERIES_COLORS.expenses,
       values: months.map((month) =>
         month.unavailable[currency] ? null : (month.expenses[currency] ?? 0) / 100,
@@ -262,7 +284,7 @@ export function DashboardOverview({
 
   return (
     <div className="space-y-6">
-      <div className={`grid gap-4 sm:grid-cols-2 ${showFinancials ? "xl:grid-cols-4" : "xl:grid-cols-2"}`}>
+      <div className={`grid gap-4 sm:grid-cols-2 ${showFinancials ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
         <MetricCard
           title="Non-cancelled bookings"
           value={String(bookingCount)}
@@ -287,6 +309,20 @@ export function DashboardOverview({
               accent="bg-sky-500/10 text-sky-700 dark:text-sky-300"
             />
             <MetricCard
+              title="Booking expenses this month"
+              value={currentMonthUnavailable ? "Unavailable" : money(currentMonth?.bookingExpenses[currency])}
+              detail={`All-time booking expenses: ${financialUnavailable ? "Unavailable" : money(bookingExpenses[currency])}`}
+              icon={<ArrowDownRight className="size-4" />}
+              accent="bg-rose-500/10 text-rose-700 dark:text-rose-300"
+            />
+            <MetricCard
+              title="Company expenses this month"
+              value={money(currentMonth?.companyExpenses[currency])}
+              detail={`All-time company expenses: ${money(companyExpenses[currency])}`}
+              icon={<Wallet className="size-4" />}
+              accent="bg-amber-500/10 text-amber-700 dark:text-amber-300"
+            />
+            <MetricCard
               title="Profit this month"
               value={currentMonthProfit}
               detail={currentMonth?.unavailable[currency]
@@ -306,7 +342,7 @@ export function DashboardOverview({
           <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <CardTitle>Revenue, expenses &amp; profit</CardTitle>
-              <CardDescription>Monthly booking travel dates · last six months</CardDescription>
+              <CardDescription>Booking costs by travel date · company costs by expense date · last six months</CardDescription>
             </div>
             {showFinancials && (
               <select
@@ -336,7 +372,7 @@ export function DashboardOverview({
                   labels={months.map((month) => month.label)}
                   series={financialSeries}
                   formatValue={(value) => formatMoney(Math.round(value * 100), currency)}
-                  ariaLabel={`Monthly revenue, expenses and profit in ${currency}`}
+                  ariaLabel={`Monthly revenue, booking expenses, company expenses, total expenses and profit in ${currency}`}
                 />
               </div>
             ) : (

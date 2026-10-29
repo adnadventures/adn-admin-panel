@@ -226,6 +226,7 @@ export type FinanceExpense = Meta & {
   description: string;
   category: string;
   vendor: string;
+  payee?: string;
   bookingId?: string;
   money: MoneyEntry;
   note: string;

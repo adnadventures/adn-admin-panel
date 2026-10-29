@@ -31,8 +31,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={/* keep your existing font classes */ "antialiased"}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={cn(
+        notoSans.variable,
+        geistSans.variable,
+        geistMono.variable,
+        playfairDisplayHeading.variable,
+      )}
+    >
+      <body className="antialiased">
         <ThemeProvider>
           {children}
           <Toaster richColors position="top-right" />

@@ -1,6 +1,6 @@
 import {
   BarChart3, CalendarCheck, FileText, LayoutDashboard, Megaphone,
-  Package, Settings, Users, Wallet, type LucideIcon,
+  Package, ReceiptText, Settings, Users, Wallet, type LucideIcon,
 } from "lucide-react";
 import type { ModuleKey, Role, SessionUser } from "@/types/roles";
 
@@ -23,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Order Sources", href: "/order-sources", icon: Megaphone, roles: MGMT, module: "order-sources" },
   { label: "Invoices", href: "/invoices", icon: FileText, roles: ALL, module: "invoices" },
   { label: "Finance", href: "/finance", icon: Wallet, roles: MGMT, module: "finance" },
+  { label: "Company Expenses", href: "/company-expenses", icon: ReceiptText, roles: MGMT, module: "finance" },
   { label: "Analytics", href: "/analytics", icon: BarChart3, roles: MGMT, module: "analytics" },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["admin"], module: null },
 ];

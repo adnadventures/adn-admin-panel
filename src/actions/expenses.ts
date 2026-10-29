@@ -47,7 +47,8 @@ export async function createExpense(formData: FormData): Promise<Result> {
     date: formData.get("date"),
     description: formData.get("description"),
     category: formData.get("category"),
-    vendor: formData.get("vendor"),
+    vendor: formData.get("vendor") ?? "",
+    payee: formData.get("payee") ?? undefined,
     bookingId: formData.get("bookingId") ?? undefined,
     amount: Number(formData.get("amount")),
     currency: formData.get("currency"),
@@ -55,6 +56,9 @@ export async function createExpense(formData: FormData): Promise<Result> {
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const input = parsed.data;
+  if (!input.bookingId && !input.payee) {
+    return { ok: false, error: "Enter the employee or vendor name for this company expense" };
+  }
   if (input.bookingId && !(await getBooking(input.bookingId))) {
     return { ok: false, error: "Booking not found" };
   }
@@ -133,6 +137,7 @@ export async function createExpense(formData: FormData): Promise<Result> {
     description: input.description,
     category: input.category,
     vendor: input.vendor,
+    ...(input.payee ? { payee: input.payee } : {}),
     ...(input.bookingId ? { bookingId: input.bookingId } : {}),
     money,
     note: input.note,
@@ -143,6 +148,7 @@ export async function createExpense(formData: FormData): Promise<Result> {
     adminDb.collection(COL.auditLogs).doc(),
     auditEntry(user, "expense.create", "expense", expenseRef.id, {
       date: input.date, category: input.category, amount: money.amount, currency: money.currency,
+      ...(input.payee ? { payee: input.payee } : {}),
       ...(input.bookingId ? { bookingId: input.bookingId } : {}),
       receipt: Boolean(receipt),
     }),
@@ -171,6 +177,7 @@ export async function createExpense(formData: FormData): Promise<Result> {
   }
 
   revalidatePath("/finance");
+  revalidatePath("/company-expenses");
   if (input.bookingId) revalidatePath(`/bookings/${input.bookingId}`);
   return { ok: true, id: expenseRef.id };
 }
@@ -192,6 +199,7 @@ export async function deleteExpense(id: string): Promise<Result> {
   );
   await batch.commit();
   revalidatePath("/finance");
+  revalidatePath("/company-expenses");
   if (expense.bookingId) revalidatePath(`/bookings/${expense.bookingId}`);
   return { ok: true, id };
 }

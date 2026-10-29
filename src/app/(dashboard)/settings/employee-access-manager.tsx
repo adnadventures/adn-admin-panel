@@ -14,11 +14,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
-import type { ModuleKey } from "@/types/roles";
+import { EMPLOYEE_MODULES, type ModuleKey } from "@/types/roles";
 
-const MODULE_OPTIONS = NAV_ITEMS.flatMap((item) =>
-  item.module ? [{ id: item.module, label: item.label }] : [],
-);
+const MODULE_OPTIONS = EMPLOYEE_MODULES.map((id) => ({
+  id,
+  label: NAV_ITEMS.find((item) => item.module === id)?.label ?? id,
+}));
 
 function isSelected(modules: ModuleKey[], module: ModuleKey) {
   return modules.includes(module);

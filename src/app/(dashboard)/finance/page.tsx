@@ -57,11 +57,22 @@ export default async function Page() {
       bookingExpenses,
     };
   });
+  const companyExpenses = allExpenses
+    .filter((expense) => !expense.bookingId)
+    .map((expense) => ({
+      id: expense.id,
+      date: expense.date,
+      description: expense.description,
+      category: expense.category,
+      payee: expense.payee || expense.vendor,
+      currency: expense.money.currency,
+      amount: expense.money.amount,
+    }));
 
   return (
     <>
-      <PageHeader title="Finance" description="Review booking revenue, expenses, and profit over a selected travel date range." />
-      <FinanceDashboard bookings={reports} today={todayIST()} />
+      <PageHeader title="Finance" description="Review booking revenue, company expenses, booking expenses, and profit over a selected period." />
+      <FinanceDashboard bookings={reports} companyExpenses={companyExpenses} today={todayIST()} />
     </>
   );
 }

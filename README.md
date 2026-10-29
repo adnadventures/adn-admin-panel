@@ -57,6 +57,11 @@ profit by package, and include direct costs in expenses. Manually entered
 expenses can include a private PDF or image receipt stored in the invoice R2
 bucket.
 
+The separate **Company Expenses** page tracks costs not linked to bookings,
+including staff salaries, rent, purchases, and utilities. Each record includes
+an employee or vendor name; admins and managers can add or remove records, and
+employees with Finance access can review them.
+
 Deploy the Firestore indexes in `firestore.indexes.json` when applying schema
 changes:
 

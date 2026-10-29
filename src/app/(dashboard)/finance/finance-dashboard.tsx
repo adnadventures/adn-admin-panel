@@ -19,16 +19,27 @@ type ReportBooking = {
   bookingExpenses: number | null;
 };
 
+type ReportCompanyExpense = {
+  id: string;
+  date: string;
+  description: string;
+  category: string;
+  payee: string;
+  currency: CurrencyCode;
+  amount: number;
+};
+
 type Props = {
   bookings: ReportBooking[];
+  companyExpenses: ReportCompanyExpense[];
   today: string;
 };
 
 type Totals = {
   revenue: number;
-  expenses: number;
-  profit: number;
-  unavailable: boolean;
+  bookingExpenses: number;
+  companyExpenses: number;
+  bookingExpensesUnavailable: boolean;
   bookingCount: number;
 };
 
@@ -52,18 +63,20 @@ function SummaryCard({
   currency,
   description,
   unavailable,
+  valueClassName,
 }: {
   title: string;
   amount: number;
   currency: CurrencyCode;
   description: string;
   unavailable?: boolean;
+  valueClassName?: string;
 }) {
   return (
     <Card>
       <CardHeader>
         <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-xl">
+        <CardTitle className={`text-xl ${valueClassName ?? ""}`}>
           {unavailable ? "Unavailable — check exchange rates" : formatMoney(amount, currency)}
         </CardTitle>
       </CardHeader>
@@ -72,7 +85,7 @@ function SummaryCard({
   );
 }
 
-export function FinanceDashboard({ bookings, today }: Props) {
+export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
   const [range, setRange] = useState(() => currentMonth(today));
   const validRange = Boolean(range.start && range.end && range.start <= range.end);
   const selectedBookings = validRange
@@ -80,27 +93,40 @@ export function FinanceDashboard({ bookings, today }: Props) {
       booking.status !== "cancelled" && within(booking.travelStart, range.start, range.end),
     )
     : [];
+  const selectedCompanyExpenses = validRange
+    ? companyExpenses.filter((expense) => within(expense.date, range.start, range.end))
+    : [];
   const totalsByCurrency = new Map<CurrencyCode, Totals>();
 
   for (const booking of selectedBookings) {
     const totals = totalsByCurrency.get(booking.currency) ?? {
       revenue: 0,
-      expenses: 0,
-      profit: 0,
-      unavailable: false,
+      bookingExpenses: 0,
+      companyExpenses: 0,
+      bookingExpensesUnavailable: false,
       bookingCount: 0,
     };
     totals.revenue += booking.revenue;
     totals.bookingCount++;
 
     if (booking.packageCost === null || booking.bookingExpenses === null) {
-      totals.unavailable = true;
+      totals.bookingExpensesUnavailable = true;
     } else {
-      const expenses = booking.packageCost + booking.bookingExpenses;
-      totals.expenses += expenses;
-      totals.profit += booking.revenue - expenses;
+      totals.bookingExpenses += booking.packageCost + booking.bookingExpenses;
     }
     totalsByCurrency.set(booking.currency, totals);
+  }
+
+  for (const expense of selectedCompanyExpenses) {
+    const totals = totalsByCurrency.get(expense.currency) ?? {
+      revenue: 0,
+      bookingExpenses: 0,
+      companyExpenses: 0,
+      bookingExpensesUnavailable: false,
+      bookingCount: 0,
+    };
+    totals.companyExpenses += expense.amount;
+    totalsByCurrency.set(expense.currency, totals);
   }
 
   const currencies = Array.from(totalsByCurrency.keys()).sort((a, b) => a.localeCompare(b));
@@ -111,7 +137,8 @@ export function FinanceDashboard({ bookings, today }: Props) {
         <CardHeader>
           <CardTitle>Reporting period</CardTitle>
           <CardDescription>
-            Filter bookings by travel start date. Cancelled bookings are excluded; currency totals stay separate.
+            Bookings are filtered by travel start date; company expenses are filtered by expense date.
+            Cancelled bookings are excluded and currency totals stay separate.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -142,18 +169,22 @@ export function FinanceDashboard({ bookings, today }: Props) {
       {currencies.length === 0 ? (
         <Card>
           <CardContent className="text-muted-foreground py-8 text-center text-sm">
-            No bookings in this travel date range.
+            No bookings or company expenses in this date range.
           </CardContent>
         </Card>
       ) : currencies.map((currency) => {
         const totals = totalsByCurrency.get(currency)!;
-        const unavailable = totals.unavailable;
+        const totalExpenses = totals.bookingExpenses + totals.companyExpenses;
+        const profit = totals.revenue - totalExpenses;
+        const companyExpenseCount = selectedCompanyExpenses
+          .filter((expense) => expense.currency === currency)
+          .length;
         return (
           <section key={currency} className="space-y-3">
             <h2 className="text-sm font-semibold text-muted-foreground">
               {currency} · {CURRENCIES[currency].name}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <SummaryCard
                 title="Booking revenue"
                 amount={totals.revenue}
@@ -161,18 +192,32 @@ export function FinanceDashboard({ bookings, today }: Props) {
                 description={`Total from ${totals.bookingCount} booking${totals.bookingCount === 1 ? "" : "s"} in this period.`}
               />
               <SummaryCard
-                title="Total expenses"
-                amount={totals.expenses}
+                title="Booking expenses"
+                amount={totals.bookingExpenses}
                 currency={currency}
-                unavailable={unavailable}
-                description="Package costs multiplied by active members, plus expenses recorded in each booking."
+                unavailable={totals.bookingExpensesUnavailable}
+                description="Package costs and expenses recorded against bookings."
+              />
+              <SummaryCard
+                title="Company expenses"
+                amount={totals.companyExpenses}
+                currency={currency}
+                description={`${companyExpenseCount} company expense${companyExpenseCount === 1 ? "" : "s"} in this period.`}
+              />
+              <SummaryCard
+                title="Total expenses"
+                amount={totalExpenses}
+                currency={currency}
+                unavailable={totals.bookingExpensesUnavailable}
+                description="Company expenses plus booking expenses."
               />
               <SummaryCard
                 title="Profit"
-                amount={totals.profit}
+                amount={profit}
                 currency={currency}
-                unavailable={unavailable}
+                unavailable={totals.bookingExpensesUnavailable}
                 description="Booking revenue minus total expenses."
+                valueClassName={profit >= 0 ? "text-green-700 dark:text-green-400" : "text-destructive"}
               />
             </div>
           </section>

@@ -48,6 +48,8 @@ export default async function DashboardPage() {
   }
 
   const revenue: Partial<Record<CurrencyCode, number>> = {};
+  const bookingExpenseTotals: Partial<Record<CurrencyCode, number>> = {};
+  const companyExpenseTotals: Partial<Record<CurrencyCode, number>> = {};
   const cost: Partial<Record<CurrencyCode, number>> = {};
   const profit: Partial<Record<CurrencyCode, number>> = {};
   const unavailable: Partial<Record<CurrencyCode, boolean>> = {};
@@ -56,6 +58,8 @@ export default async function DashboardPage() {
     bookings: 0,
     travelers: 0,
     revenue: {} as Partial<Record<CurrencyCode, number>>,
+    bookingExpenses: {} as Partial<Record<CurrencyCode, number>>,
+    companyExpenses: {} as Partial<Record<CurrencyCode, number>>,
     expenses: {} as Partial<Record<CurrencyCode, number>>,
     profit: {} as Partial<Record<CurrencyCode, number>>,
     unavailable: {} as Partial<Record<CurrencyCode, boolean>>,
@@ -63,6 +67,18 @@ export default async function DashboardPage() {
   const monthByKey = new Map(monthly.map((month) => [month.key, month]));
   const statuses = { open: 0, closed: 0, completed: 0, cancelled: 0 };
   let activeTravelers = 0;
+
+  for (const expense of expenses) {
+    if (expense.bookingId) continue;
+    const currency = expense.money.currency;
+    companyExpenseTotals[currency] = (companyExpenseTotals[currency] ?? 0) + expense.money.amount;
+
+    const month = monthByKey.get(expense.date.slice(0, 7));
+    if (month) {
+      month.companyExpenses[currency] = (month.companyExpenses[currency] ?? 0) + expense.money.amount;
+      month.expenses[currency] = (month.expenses[currency] ?? 0) + expense.money.amount;
+    }
+  }
 
   for (const booking of bookings) {
     statuses[booking.status]++;
@@ -88,12 +104,17 @@ export default async function DashboardPage() {
       ? null
       : packageCost + bookingExpenses;
     revenue[booking.currency] = (revenue[booking.currency] ?? 0) + booking.totalAmount;
+    if (totalExpenses !== null) {
+      bookingExpenseTotals[booking.currency] =
+        (bookingExpenseTotals[booking.currency] ?? 0) + totalExpenses;
+    }
     if (totalExpenses === null) {
       unavailable[booking.currency] = true;
     } else {
       cost[booking.currency] = (cost[booking.currency] ?? 0) + totalExpenses;
       profit[booking.currency] =
-        (profit[booking.currency] ?? 0) + booking.totalAmount - totalExpenses;
+        (profit[booking.currency] ?? 0)
+        + booking.totalAmount - totalExpenses;
     }
 
     const monthKey = booking.travelStart.slice(0, 7);
@@ -102,6 +123,10 @@ export default async function DashboardPage() {
     month.bookings++;
     month.travelers += booking.memberCount;
     month.revenue[booking.currency] = (month.revenue[booking.currency] ?? 0) + booking.totalAmount;
+    if (totalExpenses !== null) {
+      month.bookingExpenses[booking.currency] =
+        (month.bookingExpenses[booking.currency] ?? 0) + totalExpenses;
+    }
     if (totalExpenses === null) {
       month.unavailable[booking.currency] = true;
     } else {
@@ -109,6 +134,16 @@ export default async function DashboardPage() {
       month.profit[booking.currency] =
         (month.profit[booking.currency] ?? 0) + booking.totalAmount - totalExpenses;
     }
+  }
+
+  for (const month of monthly) {
+    for (const currency of Object.keys(month.companyExpenses) as CurrencyCode[]) {
+      month.profit[currency] = (month.profit[currency] ?? 0) - (month.companyExpenses[currency] ?? 0);
+    }
+  }
+  for (const currency of Object.keys(companyExpenseTotals) as CurrencyCode[]) {
+    profit[currency] = (profit[currency] ?? 0) - (companyExpenseTotals[currency] ?? 0);
+    cost[currency] = (cost[currency] ?? 0) + (companyExpenseTotals[currency] ?? 0);
   }
 
   const upcoming = bookings
@@ -131,7 +166,10 @@ export default async function DashboardPage() {
       status: booking.status === "open" ? "open" as const : "closed" as const,
     }));
   const currencies = Array.from(new Set(
-    bookings.filter((booking) => booking.status !== "cancelled").map((booking) => booking.currency),
+    [
+      ...bookings.filter((booking) => booking.status !== "cancelled").map((booking) => booking.currency),
+      ...Object.keys(companyExpenseTotals) as CurrencyCode[],
+    ],
   )).sort();
 
   return (
@@ -145,6 +183,8 @@ export default async function DashboardPage() {
         months={monthly}
         currencies={currencies}
         revenue={revenue}
+        bookingExpenses={bookingExpenseTotals}
+        companyExpenses={companyExpenseTotals}
         expenses={cost}
         profit={profit}
         unavailable={unavailable}

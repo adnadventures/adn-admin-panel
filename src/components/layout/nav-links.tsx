@@ -10,7 +10,7 @@ export function NavLinks({ user, onNavigate }: { user: SessionUser; onNavigate?:
   const pathname = usePathname();
 
   return (
-    <nav className="flex flex-col gap-1">
+    <nav aria-label="Main navigation" className="flex flex-col gap-1">
       {NAV_ITEMS.filter((item) => canAccessNavItem(user, item)).map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
@@ -18,14 +18,15 @@ export function NavLinks({ user, onNavigate }: { user: SessionUser; onNavigate?:
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
               active
-                ? "bg-brand-gradient text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                ? "bg-secondary text-foreground shadow-sm ring-1 ring-border/70"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
-            <item.icon className="size-4" />
+            <item.icon className={cn("size-[18px] shrink-0", active && "text-primary")} aria-hidden="true" />
             {item.label}
           </Link>
         );
