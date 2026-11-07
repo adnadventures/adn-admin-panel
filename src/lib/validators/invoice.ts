@@ -36,7 +36,7 @@ export const invoiceInputSchema = z.object({
   taxRatePercent: z.number().min(0).max(100),
   taxMode: z.enum(["exclusive", "inclusive"]),
   payments: z.array(z.object({
-    paymentId: z.string().uuid().optional(),
+    paymentId: z.string().uuid().or(z.literal("")).optional(),
     amount: z.number().positive("Enter a payment amount").max(1_000_000_000),
     date,
   })).max(20, "Add no more than 20 payments"),

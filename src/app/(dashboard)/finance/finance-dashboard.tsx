@@ -9,19 +9,19 @@ import { CURRENCIES, formatMoney, type CurrencyCode } from "@/lib/finance/curren
 import { formatDate } from "@/lib/format";
 import { formatReportAmount } from "@/lib/reports/pdf";
 
-type ReportBooking = {
+type ReportInvoice = {
   id: string;
-  bookingNo: string;
-  title: string;
-  travelStart: string;
+  invoiceNo: string;
+  customer: string;
+  issueDate: string;
   currency: CurrencyCode;
   status: string;
-  revenue: number;
-  packageCost: number | null;
-  bookingExpenses: number | null;
+  amountPaid: number;
+  remainingBalance: number;
+  packageCost: number;
 };
 
-type ReportCompanyExpense = {
+type ReportExpense = {
   id: string;
   date: string;
   description: string;
@@ -32,17 +32,19 @@ type ReportCompanyExpense = {
 };
 
 type Props = {
-  bookings: ReportBooking[];
-  companyExpenses: ReportCompanyExpense[];
+  invoices: ReportInvoice[];
+  bookingExpenses: ReportExpense[];
+  companyExpenses: ReportExpense[];
   today: string;
 };
 
 type Totals = {
   revenue: number;
+  pendingCollection: number;
+  invoiceCosts: number;
   bookingExpenses: number;
   companyExpenses: number;
-  bookingExpensesUnavailable: boolean;
-  bookingCount: number;
+  invoiceCount: number;
 };
 
 type Period = "today" | "week" | "month" | "year" | "all-time" | "custom";
@@ -103,7 +105,7 @@ function SummaryCard({
   );
 }
 
-export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
+export function FinanceDashboard({ invoices, bookingExpenses, companyExpenses, today }: Props) {
   const [period, setPeriod] = useState<Period>("month");
   const [customRange, setCustomRange] = useState<DateRange>(() => periodRange("month", today)!);
   const range = period === "custom" ? customRange : periodRange(period, today);
@@ -117,40 +119,54 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
   const isInPeriod = (value: string) =>
     period === "all-time"
     || (validRange && range !== null && within(value, range.start, range.end));
-  const selectedBookings = bookings.filter((booking) =>
-    booking.status !== "cancelled" && isInPeriod(booking.travelStart),
+  const selectedInvoices = invoices.filter((invoice) =>
+    invoice.status !== "cancelled" && isInPeriod(invoice.issueDate),
+  );
+  const selectedBookingExpenses = bookingExpenses.filter((expense) =>
+    isInPeriod(expense.date),
   );
   const selectedCompanyExpenses = companyExpenses.filter((expense) =>
     isInPeriod(expense.date),
   );
   const totalsByCurrency = new Map<CurrencyCode, Totals>();
 
-  for (const booking of selectedBookings) {
-    const totals = totalsByCurrency.get(booking.currency) ?? {
+  for (const invoice of selectedInvoices) {
+    const totals = totalsByCurrency.get(invoice.currency) ?? {
       revenue: 0,
+      pendingCollection: 0,
+      invoiceCosts: 0,
       bookingExpenses: 0,
       companyExpenses: 0,
-      bookingExpensesUnavailable: false,
-      bookingCount: 0,
+      invoiceCount: 0,
     };
-    totals.revenue += booking.revenue;
-    totals.bookingCount++;
+    totals.revenue += invoice.amountPaid;
+    totals.pendingCollection += invoice.remainingBalance;
+    totals.invoiceCosts += invoice.packageCost;
+    if (invoice.amountPaid > 0) totals.invoiceCount++;
+    totalsByCurrency.set(invoice.currency, totals);
+  }
 
-    if (booking.packageCost === null || booking.bookingExpenses === null) {
-      totals.bookingExpensesUnavailable = true;
-    } else {
-      totals.bookingExpenses += booking.packageCost + booking.bookingExpenses;
-    }
-    totalsByCurrency.set(booking.currency, totals);
+  for (const expense of selectedBookingExpenses) {
+    const totals = totalsByCurrency.get(expense.currency) ?? {
+      revenue: 0,
+      pendingCollection: 0,
+      invoiceCosts: 0,
+      bookingExpenses: 0,
+      companyExpenses: 0,
+      invoiceCount: 0,
+    };
+    totals.bookingExpenses += expense.amount;
+    totalsByCurrency.set(expense.currency, totals);
   }
 
   for (const expense of selectedCompanyExpenses) {
     const totals = totalsByCurrency.get(expense.currency) ?? {
       revenue: 0,
+      pendingCollection: 0,
+      invoiceCosts: 0,
       bookingExpenses: 0,
       companyExpenses: 0,
-      bookingExpensesUnavailable: false,
-      bookingCount: 0,
+      invoiceCount: 0,
     };
     totals.companyExpenses += expense.amount;
     totalsByCurrency.set(expense.currency, totals);
@@ -167,43 +183,57 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
     period: periodLabel,
     fileName: `finance-${period}`,
     summary: [
-      ["Non-cancelled bookings", String(selectedBookings.length)],
+      ["Non-cancelled invoices", String(selectedInvoices.length)],
+      ["Invoices with pending balances", String(selectedInvoices.filter((invoice) => invoice.remainingBalance > 0).length)],
+      ["Booking expenses", String(selectedBookingExpenses.length)],
       ["Company expenses", String(selectedCompanyExpenses.length)],
       ["Currencies", currencies.join(", ") || "None"],
     ] as [string, string][],
     sections: [
       ...currencies.map((currency) => {
         const totals = totalsByCurrency.get(currency)!;
-        const totalExpenses = totals.bookingExpenses + totals.companyExpenses;
+        const totalExpenses = totals.invoiceCosts + totals.bookingExpenses + totals.companyExpenses;
         return {
           title: `${currency} - ${CURRENCIES[currency].name}`,
           columns: ["Metric", "Amount"],
           rows: [
-            ["Booking revenue", formatReportAmount(totals.revenue, currency)],
-            ["Booking expenses", totals.bookingExpensesUnavailable ? "Unavailable" : formatReportAmount(totals.bookingExpenses, currency)],
+            ["Paid invoice revenue", formatReportAmount(totals.revenue, currency)],
+            ["Pending collection", formatReportAmount(totals.pendingCollection, currency)],
+            ["Invoice package costs", formatReportAmount(totals.invoiceCosts, currency)],
+            ["Booking expenses", formatReportAmount(totals.bookingExpenses, currency)],
             ["Company expenses", formatReportAmount(totals.companyExpenses, currency)],
-            ["Total expenses", totals.bookingExpensesUnavailable ? "Unavailable" : formatReportAmount(totalExpenses, currency)],
-            ["Profit", totals.bookingExpensesUnavailable ? "Unavailable" : formatReportAmount(totals.revenue - totalExpenses, currency)],
+            ["Total expenses", formatReportAmount(totalExpenses, currency)],
+            ["Profit", formatReportAmount(totals.revenue - totalExpenses, currency)],
           ],
         };
       }),
       {
-        title: "Bookings in this period",
-        columns: ["Booking No.", "Booking", "Travel date", "Currency", "Revenue", "Expenses", "Profit"],
-        rows: selectedBookings.map((booking) => {
-          const bookingExpense = booking.packageCost === null || booking.bookingExpenses === null
-            ? null
-            : booking.packageCost + booking.bookingExpenses;
+        title: "Invoices in this period",
+        columns: ["Invoice No.", "Client", "Issue date", "Currency", "Paid", "Pending", "Package cost", "Profit"],
+        rows: selectedInvoices.map((invoice) => {
           return [
-            booking.bookingNo,
-            booking.title,
-            formatDate(booking.travelStart),
-            booking.currency,
-            formatReportAmount(booking.revenue, booking.currency),
-            bookingExpense === null ? "Unavailable" : formatReportAmount(bookingExpense, booking.currency),
-            bookingExpense === null ? "Unavailable" : formatReportAmount(booking.revenue - bookingExpense, booking.currency),
+            invoice.invoiceNo,
+            invoice.customer,
+            formatDate(invoice.issueDate),
+            invoice.currency,
+            formatReportAmount(invoice.amountPaid, invoice.currency),
+            formatReportAmount(invoice.remainingBalance, invoice.currency),
+            formatReportAmount(invoice.packageCost, invoice.currency),
+            formatReportAmount(invoice.amountPaid - invoice.packageCost, invoice.currency),
           ];
         }),
+      },
+      {
+        title: "Booking expenses in this period",
+        columns: ["Date", "Description", "Category", "Payee", "Currency", "Amount"],
+        rows: selectedBookingExpenses.map((expense) => [
+          formatDate(expense.date),
+          expense.description,
+          expense.category,
+          expense.payee,
+          expense.currency,
+          formatReportAmount(expense.amount, expense.currency),
+        ]),
       },
       {
         title: "Company expenses in this period",
@@ -231,8 +261,9 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
         <CardHeader>
           <CardTitle>Reporting period</CardTitle>
           <CardDescription>
-            Bookings are filtered by travel start date; company expenses are filtered by expense date.
-            Cancelled bookings are excluded and currency totals stay separate.
+            Invoices are filtered by issue date; expenses are filtered by expense date.
+            Only paid amounts count as revenue; remaining balances are shown as pending collection.
+            Cancelled invoices are excluded and currency totals stay separate.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -281,13 +312,16 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
       {currencies.length === 0 ? (
         <Card>
           <CardContent className="text-muted-foreground py-8 text-center text-sm">
-            No bookings or company expenses in this date range.
+            No invoices or expenses in this date range.
           </CardContent>
         </Card>
       ) : currencies.map((currency) => {
         const totals = totalsByCurrency.get(currency)!;
-        const totalExpenses = totals.bookingExpenses + totals.companyExpenses;
+        const totalExpenses = totals.invoiceCosts + totals.bookingExpenses + totals.companyExpenses;
         const profit = totals.revenue - totalExpenses;
+        const bookingExpenseCount = selectedBookingExpenses
+          .filter((expense) => expense.currency === currency)
+          .length;
         const companyExpenseCount = selectedCompanyExpenses
           .filter((expense) => expense.currency === currency)
           .length;
@@ -296,19 +330,30 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
             <h2 className="text-sm font-semibold text-muted-foreground">
               {currency} · {CURRENCIES[currency].name}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
               <SummaryCard
-                title="Booking revenue"
+                title="Paid invoice revenue"
                 amount={totals.revenue}
                 currency={currency}
-                description={`Total from ${totals.bookingCount} booking${totals.bookingCount === 1 ? "" : "s"} in this period.`}
+                description={`Collected from ${totals.invoiceCount} invoice${totals.invoiceCount === 1 ? "" : "s"} in this period.`}
+              />
+              <SummaryCard
+                title="Pending collection"
+                amount={totals.pendingCollection}
+                currency={currency}
+                description="Remaining balances on non-cancelled invoices issued in this period."
+              />
+              <SummaryCard
+                title="Invoice package costs"
+                amount={totals.invoiceCosts}
+                currency={currency}
+                description="Package costs saved on each invoice."
               />
               <SummaryCard
                 title="Booking expenses"
                 amount={totals.bookingExpenses}
                 currency={currency}
-                unavailable={totals.bookingExpensesUnavailable}
-                description="Package costs and expenses recorded against bookings."
+                description={`${bookingExpenseCount} booking expense${bookingExpenseCount === 1 ? "" : "s"} in this period.`}
               />
               <SummaryCard
                 title="Company expenses"
@@ -320,15 +365,13 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
                 title="Total expenses"
                 amount={totalExpenses}
                 currency={currency}
-                unavailable={totals.bookingExpensesUnavailable}
-                description="Company expenses plus booking expenses."
+                description="Invoice package costs plus booking and company expenses."
               />
               <SummaryCard
                 title="Profit"
                 amount={profit}
                 currency={currency}
-                unavailable={totals.bookingExpensesUnavailable}
-                description="Booking revenue minus total expenses."
+                description="Invoice revenue minus total expenses."
                 valueClassName={profit >= 0 ? "text-green-700 dark:text-green-400" : "text-destructive"}
               />
             </div>
@@ -336,43 +379,40 @@ export function FinanceDashboard({ bookings, companyExpenses, today }: Props) {
         );
       })}
 
-      {selectedBookings.length > 0 && (
+      {selectedInvoices.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Bookings in this period</CardTitle>
-            <CardDescription>Revenue, expenses, and profit for each booking.</CardDescription>
+            <CardTitle>Invoices in this period</CardTitle>
+            <CardDescription>Paid amounts, pending balances, package costs, and profit for each invoice.</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b text-muted-foreground">
-                  <th className="py-2 pr-3 font-medium">Booking</th>
-                  <th className="py-2 pr-3 font-medium">Travel date</th>
+                  <th className="py-2 pr-3 font-medium">Invoice</th>
+                  <th className="py-2 pr-3 font-medium">Issue date</th>
                   <th className="py-2 pr-3 font-medium">Currency</th>
-                  <th className="py-2 pr-3 text-right font-medium">Revenue</th>
-                  <th className="py-2 pr-3 text-right font-medium">Expenses</th>
+                  <th className="py-2 pr-3 text-right font-medium">Paid</th>
+                  <th className="py-2 pr-3 text-right font-medium">Pending</th>
+                  <th className="py-2 pr-3 text-right font-medium">Package cost</th>
                   <th className="py-2 text-right font-medium">Profit</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedBookings.map((booking) => {
-                  const expenses = booking.packageCost === null || booking.bookingExpenses === null
-                    ? null
-                    : booking.packageCost + booking.bookingExpenses;
+                {selectedInvoices.map((invoice) => {
                   return (
-                    <tr key={booking.id} className="border-b last:border-0">
+                    <tr key={invoice.id} className="border-b last:border-0">
                       <td className="py-3 pr-3 font-medium">
-                        {booking.title}
-                        <span className="text-muted-foreground block text-xs">{booking.bookingNo}</span>
+                        {invoice.customer}
+                        <span className="text-muted-foreground block text-xs">{invoice.invoiceNo}</span>
                       </td>
-                      <td className="py-3 pr-3">{formatDate(booking.travelStart)}</td>
-                      <td className="py-3 pr-3">{booking.currency}</td>
-                      <td className="py-3 pr-3 text-right">{formatMoney(booking.revenue, booking.currency)}</td>
-                      <td className="py-3 pr-3 text-right">
-                        {expenses === null ? "Unavailable" : formatMoney(expenses, booking.currency)}
-                      </td>
+                      <td className="py-3 pr-3">{formatDate(invoice.issueDate)}</td>
+                      <td className="py-3 pr-3">{invoice.currency}</td>
+                      <td className="py-3 pr-3 text-right">{formatMoney(invoice.amountPaid, invoice.currency)}</td>
+                      <td className="py-3 pr-3 text-right">{formatMoney(invoice.remainingBalance, invoice.currency)}</td>
+                      <td className="py-3 pr-3 text-right">{formatMoney(invoice.packageCost, invoice.currency)}</td>
                       <td className="py-3 text-right">
-                        {expenses === null ? "Unavailable" : formatMoney(booking.revenue - expenses, booking.currency)}
+                        {formatMoney(invoice.amountPaid - invoice.packageCost, invoice.currency)}
                       </td>
                     </tr>
                   );

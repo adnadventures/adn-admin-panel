@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireModule } from "@/lib/auth/session";
 import { listBookings } from "@/lib/data/bookings";
 import { listExpenses } from "@/lib/data/expenses";
+import { listInvoices } from "@/lib/data/invoices";
 import { listPackages } from "@/lib/data/packages";
 import type { CurrencyCode } from "@/lib/finance/currency";
 import { convertMoneyEntryAmount } from "@/lib/finance/fx";
@@ -31,12 +32,14 @@ export default async function DashboardPage() {
   const today = todayIST();
   const months = lastSixMonths(today);
   const monthKeys = new Set(months.map(({ key }) => key));
-  const [bookings, packages, expenses, settings, targets] = await Promise.all([
+  const canViewFinancials = user.role === "admin" || user.role === "manager";
+  const [bookings, packages, expenses, invoices, settings, targets] = await Promise.all([
     listBookings(),
     listPackages(),
-    user.role === "admin" || user.role === "manager" ? listExpenses() : Promise.resolve([]),
-    user.role === "admin" || user.role === "manager" ? getSettings() : Promise.resolve(null),
-    user.role === "admin" || user.role === "manager"
+    canViewFinancials ? listExpenses() : Promise.resolve([]),
+    canViewFinancials ? listInvoices() : Promise.resolve([]),
+    canViewFinancials ? getSettings() : Promise.resolve(null),
+    canViewFinancials
       ? listTargetsWithProgress()
       : Promise.resolve([]),
   ]);
@@ -53,6 +56,7 @@ export default async function DashboardPage() {
   }
 
   const revenue: Partial<Record<CurrencyCode, number>> = {};
+  const pendingCollection: Partial<Record<CurrencyCode, number>> = {};
   const bookingExpenseTotals: Partial<Record<CurrencyCode, number>> = {};
   const companyExpenseTotals: Partial<Record<CurrencyCode, number>> = {};
   const cost: Partial<Record<CurrencyCode, number>> = {};
@@ -108,7 +112,6 @@ export default async function DashboardPage() {
     const totalExpenses = packageCost === null || bookingExpenses === null
       ? null
       : packageCost + bookingExpenses;
-    revenue[booking.currency] = (revenue[booking.currency] ?? 0) + booking.totalAmount;
     if (totalExpenses !== null) {
       bookingExpenseTotals[booking.currency] =
         (bookingExpenseTotals[booking.currency] ?? 0) + totalExpenses;
@@ -117,9 +120,6 @@ export default async function DashboardPage() {
       unavailable[booking.currency] = true;
     } else {
       cost[booking.currency] = (cost[booking.currency] ?? 0) + totalExpenses;
-      profit[booking.currency] =
-        (profit[booking.currency] ?? 0)
-        + booking.totalAmount - totalExpenses;
     }
 
     const monthKey = booking.travelStart.slice(0, 7);
@@ -127,7 +127,6 @@ export default async function DashboardPage() {
     const month = monthByKey.get(monthKey)!;
     month.bookings++;
     month.travelers += booking.memberCount;
-    month.revenue[booking.currency] = (month.revenue[booking.currency] ?? 0) + booking.totalAmount;
     if (totalExpenses !== null) {
       month.bookingExpenses[booking.currency] =
         (month.bookingExpenses[booking.currency] ?? 0) + totalExpenses;
@@ -136,19 +135,40 @@ export default async function DashboardPage() {
       month.unavailable[booking.currency] = true;
     } else {
       month.expenses[booking.currency] = (month.expenses[booking.currency] ?? 0) + totalExpenses;
-      month.profit[booking.currency] =
-        (month.profit[booking.currency] ?? 0) + booking.totalAmount - totalExpenses;
     }
   }
 
-  for (const month of monthly) {
-    for (const currency of Object.keys(month.companyExpenses) as CurrencyCode[]) {
-      month.profit[currency] = (month.profit[currency] ?? 0) - (month.companyExpenses[currency] ?? 0);
+  for (const invoice of invoices) {
+    if (invoice.status === "cancelled") continue;
+    const currency = invoice.currency;
+    revenue[currency] = (revenue[currency] ?? 0) + invoice.amountPaid;
+    pendingCollection[currency] =
+      (pendingCollection[currency] ?? 0) + invoice.remainingBalance;
+
+    const month = monthByKey.get(invoice.issueDate.slice(0, 7));
+    if (month) {
+      month.revenue[currency] = (month.revenue[currency] ?? 0) + invoice.amountPaid;
     }
   }
   for (const currency of Object.keys(companyExpenseTotals) as CurrencyCode[]) {
-    profit[currency] = (profit[currency] ?? 0) - (companyExpenseTotals[currency] ?? 0);
     cost[currency] = (cost[currency] ?? 0) + (companyExpenseTotals[currency] ?? 0);
+  }
+  for (const currency of Object.keys(revenue) as CurrencyCode[]) {
+    if (!unavailable[currency]) {
+      profit[currency] = revenue[currency]! - (cost[currency] ?? 0);
+    }
+  }
+  for (const month of monthly) {
+    const monthCurrencies = new Set([
+      ...Object.keys(month.revenue),
+      ...Object.keys(month.expenses),
+    ] as CurrencyCode[]);
+    for (const currency of monthCurrencies) {
+      if (!month.unavailable[currency]) {
+        month.profit[currency] =
+          (month.revenue[currency] ?? 0) - (month.expenses[currency] ?? 0);
+      }
+    }
   }
 
   const upcoming = bookings
@@ -172,6 +192,7 @@ export default async function DashboardPage() {
     }));
   const currencies = Array.from(new Set(
     [
+      ...invoices.filter((invoice) => invoice.status !== "cancelled").map((invoice) => invoice.currency),
       ...bookings.filter((booking) => booking.status !== "cancelled").map((booking) => booking.currency),
       ...Object.keys(companyExpenseTotals) as CurrencyCode[],
     ],
@@ -188,6 +209,7 @@ export default async function DashboardPage() {
         months={monthly}
         currencies={currencies}
         revenue={revenue}
+        pendingCollection={pendingCollection}
         bookingExpenses={bookingExpenseTotals}
         companyExpenses={companyExpenseTotals}
         expenses={cost}
@@ -197,7 +219,7 @@ export default async function DashboardPage() {
         activeTravelers={activeTravelers}
         statuses={statuses}
         upcoming={upcoming}
-        showFinancials={user.role === "admin" || user.role === "manager"}
+        showFinancials={canViewFinancials}
       />
       {(user.role === "admin" || user.role === "manager") && (
         <div className="mt-8">

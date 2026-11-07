@@ -334,21 +334,30 @@ export function InvoiceForm({
 
   function onSubmit(data: InvoiceInput) {
     startTransition(async () => {
-      const result = invoice
-        ? await updateInvoice(invoice.id, data)
-        : await createInvoice(data);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = invoice
+          ? await updateInvoice(invoice.id, data)
+          : await createInvoice(data);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        toast.success(invoice ? "Invoice updated" : "Invoice created");
+        router.push(`/invoices/${result.id}`);
+        router.refresh();
+      } catch (error) {
+        console.error("Invoice save failed:", error);
+        toast.error("Invoice could not be saved. Please try again.");
       }
-      toast.success(invoice ? "Invoice updated" : "Invoice created");
-      router.push(`/invoices/${result.id}`);
-      router.refresh();
     });
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+    <form
+      noValidate
+      onSubmit={handleSubmit(onSubmit, () => toast.error("Please correct the highlighted fields before saving."))}
+      className="space-y-5"
+    >
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
         <div className="space-y-5">
           <Card>
@@ -538,6 +547,7 @@ export function InvoiceForm({
                   </Button>
                 </div>
               ))}
+              <ErrorText message={errors.payments?.root?.message} />
               <p className="rounded-md bg-amber-500/10 p-3 text-sm font-medium">
                 Remaining Balance: {formatMoney(remaining, values.currency)}
               </p>

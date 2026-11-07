@@ -178,6 +178,8 @@ export async function createInvoice(input: unknown): Promise<Result> {
       return candidate;
     });
     revalidatePath("/invoices");
+    revalidatePath("/finance");
+    revalidatePath("/");
     return { ok: true, id: invoiceRef.id, invoiceNo };
   } catch (error) {
     if (error instanceof Error && error.message === "An invoice with this number already exists") {
@@ -267,6 +269,8 @@ export async function updateInvoice(id: string, input: unknown): Promise<Result>
   }
 
   revalidatePath("/invoices");
+  revalidatePath("/finance");
+  revalidatePath("/");
   revalidatePath(`/invoices/${id}`);
   return { ok: true, id };
 }
@@ -321,6 +325,8 @@ export async function deleteInvoice(id: string): Promise<Result> {
     ...deleteMeta(user),
   });
   revalidatePath("/invoices");
+  revalidatePath("/finance");
+  revalidatePath("/");
   revalidatePath(`/invoices/${id}`);
   return { ok: true, id };
 }
