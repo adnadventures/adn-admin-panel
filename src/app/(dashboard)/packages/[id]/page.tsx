@@ -1,8 +1,4 @@
 import { notFound } from "next/navigation";
-<<<<<<< HEAD
-=======
-import { Check, X } from "lucide-react";
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModule } from "@/lib/auth/session";
@@ -141,11 +137,7 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                             <ul className="space-y-2">
                                 {pkg.inclusions.map((t, i) => (
                                     <li key={i} className="flex gap-2 text-sm">
-<<<<<<< HEAD
                                         <span className="mt-0.5 size-4 shrink-0 text-green-600 font-bold leading-none">✓</span> {t}
-=======
-                                        <Check className="mt-0.5 size-4 shrink-0 text-green-600" /> {t}
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
                                     </li>
                                 ))}
                             </ul>
@@ -162,11 +154,7 @@ export default async function PackageDetailPage({ params }: { params: Promise<{ 
                             <ul className="space-y-2">
                                 {pkg.exclusions.map((t, i) => (
                                     <li key={i} className="flex gap-2 text-sm">
-<<<<<<< HEAD
                                         <span className="text-destructive mt-0.5 size-4 shrink-0 font-bold leading-none">✕</span> {t}
-=======
-                                        <X className="text-destructive mt-0.5 size-4 shrink-0" /> {t}
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
                                     </li>
                                 ))}
                             </ul>

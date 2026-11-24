@@ -31,11 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-<<<<<<< HEAD
 import { Button, buttonVariants } from "@/components/ui/button";
-=======
-import { Button } from "@/components/ui/button";
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -491,15 +487,9 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {!management && (
-<<<<<<< HEAD
             <Link href="/targets" className={buttonVariants({ variant: "outline" })}>
               View all targets <ArrowUpRight aria-hidden="true" />
             </Link>
-=======
-            <Button variant="outline" render={<Link href="/targets" />}>
-              View all targets <ArrowUpRight aria-hidden="true" />
-            </Button>
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
           )}
           <Button onClick={openNewTarget}>
             <Plus aria-hidden="true" /> Set a target
@@ -567,15 +557,9 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
           </div>
           {!management && targets.length > shownTargets.length && (
             <div className="text-center">
-<<<<<<< HEAD
               <Link href="/targets" className={buttonVariants({ variant: "outline" })}>
                 View all {targets.length} targets <ArrowUpRight aria-hidden="true" />
               </Link>
-=======
-              <Button variant="outline" render={<Link href="/targets" />}>
-                View all {targets.length} targets <ArrowUpRight aria-hidden="true" />
-              </Button>
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
             </div>
           )}
         </>

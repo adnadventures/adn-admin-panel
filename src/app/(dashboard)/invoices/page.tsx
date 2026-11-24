@@ -1,8 +1,4 @@
 import Link from "next/link";
-<<<<<<< HEAD
-=======
-import { FilePlus2 } from "lucide-react";
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
 import { PageHeader } from "@/components/shared/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { requireModule } from "@/lib/auth/session";
@@ -24,11 +20,7 @@ export default async function InvoicesPage() {
         actions={
           canManage ? (
             <Link href="/invoices/new" className={buttonVariants()}>
-<<<<<<< HEAD
               + Create Invoice
-=======
-              <FilePlus2 className="mr-2 size-4" /> Create Invoice
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
             </Link>
           ) : undefined
         }

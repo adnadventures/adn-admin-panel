@@ -279,7 +279,6 @@ export type TargetProgress = Target & {
   progressPercent: number | null;
   displayStatus: TargetDisplayStatus;
   celebration: boolean;
-<<<<<<< HEAD
 };
 
 /* =========================================================================
@@ -372,6 +371,3 @@ export type Vendor = Meta & {
   travelsDetails?: VendorTravelsDetails;
   hotelDetails?: VendorHotelDetails;
 };
-=======
-};
->>>>>>> d644832e8d57e8b947621595736c63fc395104ee
