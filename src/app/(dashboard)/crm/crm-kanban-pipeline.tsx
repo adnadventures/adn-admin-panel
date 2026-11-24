@@ -30,10 +30,20 @@ import {
   ChevronRight,
   Calendar,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
 import type { CrmLead, CrmStage } from "@/types/crm";
+import type { CrmEmployee } from "@/lib/data/crm";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   createCrmStage,
   renameCrmStage,
@@ -66,6 +76,7 @@ import {
 interface CrmKanbanPipelineProps {
   initialStages: CrmStage[];
   initialLeads: CrmLead[];
+  initialEmployees?: CrmEmployee[];
 }
 
 interface FilterState {
@@ -94,13 +105,27 @@ const initialFilters: FilterState = {
   closingTo: "",
 };
 
-function formatINR(val?: number): string {
-  if (val === undefined || val === null || isNaN(val)) return "₹ 0";
+export function parseLeadRevenue(val: unknown): number {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === "number") {
+    return isNaN(val) || !isFinite(val) ? 0 : Math.max(0, val);
+  }
+  if (typeof val === "string") {
+    const cleaned = val.replace(/[^0-9.-]/g, "").trim();
+    if (!cleaned) return 0;
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) || !isFinite(parsed) ? 0 : Math.max(0, parsed);
+  }
+  return 0;
+}
+
+export function formatINR(val?: unknown): string {
+  const num = parseLeadRevenue(val);
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 0,
-  }).format(val);
+  }).format(num);
 }
 
 function formatDate(isoString?: string): string {
@@ -137,10 +162,13 @@ type SortColumn =
 export function CrmKanbanPipeline({
   initialStages,
   initialLeads,
+  initialEmployees = [],
 }: CrmKanbanPipelineProps) {
   const router = useRouter();
   const [stages, setStages] = React.useState<CrmStage[]>(initialStages);
   const [leads, setLeads] = React.useState<CrmLead[]>(initialLeads);
+  const [employees] = React.useState<CrmEmployee[]>(initialEmployees);
+  const [selectedEmployee, setSelectedEmployee] = React.useState<string>("all");
 
   // View Mode: default is "kanban"
   const [viewMode, setViewMode] = React.useState<"kanban" | "table">("kanban");
@@ -222,9 +250,31 @@ export function CrmKanbanPipeline({
     return Array.from(set).sort();
   }, [leads]);
 
+  // Selected employee object from Settings-created employees
+  const selectedEmployeeObj = React.useMemo(() => {
+    if (selectedEmployee === "all") return null;
+    return employees.find((e) => e.uid === selectedEmployee) || null;
+  }, [employees, selectedEmployee]);
+
+  // Visible display name for the Employee Filter button - NEVER displays UID or email
+  const selectedEmployeeLabel = React.useMemo(() => {
+    if (selectedEmployee === "all") return "All Employees";
+    if (selectedEmployeeObj) {
+      return selectedEmployeeObj.name?.trim() || "Name unavailable";
+    }
+    return "Name unavailable";
+  }, [selectedEmployee, selectedEmployeeObj]);
+
   // Filtered leads applying search + filters
   const filteredLeads = React.useMemo(() => {
     return leads.filter((lead) => {
+      // 0. Employee Filter: Creator-wise (lead.createdBy === selectedEmployee UID)
+      if (selectedEmployee !== "all") {
+        if (lead.createdBy !== selectedEmployee) {
+          return false;
+        }
+      }
+
       // 1. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -279,11 +329,13 @@ export function CrmKanbanPipeline({
       // 6. Expected Revenue Range
       if (filters.minRevenue) {
         const min = parseFloat(filters.minRevenue);
-        if (!isNaN(min) && (lead.expectedRevenue || 0) < min) return false;
+        const rev = parseLeadRevenue(lead.expectedRevenue);
+        if (!isNaN(min) && rev < min) return false;
       }
       if (filters.maxRevenue) {
         const max = parseFloat(filters.maxRevenue);
-        if (!isNaN(max) && (lead.expectedRevenue || 0) > max) return false;
+        const rev = parseLeadRevenue(lead.expectedRevenue);
+        if (!isNaN(max) && rev > max) return false;
       }
 
       // 7. Created Date Range
@@ -306,11 +358,25 @@ export function CrmKanbanPipeline({
 
       return true;
     });
-  }, [leads, searchQuery, filters]);
+  }, [leads, searchQuery, filters, selectedEmployee]);
 
-  // Overall pipeline revenue for filtered leads
+  // Overall pipeline revenue for filtered leads (sum of valid lead amounts across all stages)
   const totalPipelineRevenue = React.useMemo(() => {
-    return filteredLeads.reduce((sum, l) => sum + (l.expectedRevenue || 0), 0);
+    return filteredLeads.reduce(
+      (sum, l) => sum + parseLeadRevenue(l.expectedRevenue),
+      0
+    );
+  }, [filteredLeads]);
+
+  // Won Revenue for filtered leads (Won leads only: won stage or converted status, not lost)
+  const wonRevenue = React.useMemo(() => {
+    return filteredLeads
+      .filter((l) => {
+        const stage = (l.stageName || "").toLowerCase().trim();
+        const isWon = stage === "won" || l.leadStatus === "converted";
+        return isWon && !l.isLost && l.leadStatus !== "unqualified";
+      })
+      .reduce((sum, l) => sum + parseLeadRevenue(l.expectedRevenue), 0);
   }, [filteredLeads]);
 
   // Sorted and Paginated leads for Table View
@@ -329,7 +395,7 @@ export function CrmKanbanPipeline({
           cmp = (a.stageName || "").localeCompare(b.stageName || "");
           break;
         case "revenue":
-          cmp = (a.expectedRevenue || 0) - (b.expectedRevenue || 0);
+          cmp = parseLeadRevenue(a.expectedRevenue) - parseLeadRevenue(b.expectedRevenue);
           break;
         case "salesperson":
           cmp = (a.assignedToName || "").localeCompare(b.assignedToName || "");
@@ -510,7 +576,7 @@ export function CrmKanbanPipeline({
 
     setIsSubmittingLead(true);
     try {
-      const revNum = parseFloat(quickLeadForm.expectedRevenue) || 0;
+      const revNum = parseLeadRevenue(quickLeadForm.expectedRevenue);
       const res = await quickCreateLead({
         name: quickLeadForm.name.trim(),
         stageId: quickLeadStage.id,
@@ -652,7 +718,7 @@ export function CrmKanbanPipeline({
             {filteredLeads.length} {filteredLeads.length === 1 ? "Lead" : "Leads"}
           </span>
 
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20">
             Total {formatINR(totalPipelineRevenue)}
           </span>
 
@@ -730,6 +796,76 @@ export function CrmKanbanPipeline({
               </button>
             )}
           </div>
+
+          {/* Employee Filter Dropdown */}
+          <div className="w-40 sm:w-48">
+            <Select
+              value={selectedEmployee}
+              onValueChange={(val: string | null) => setSelectedEmployee(val || "all")}
+            >
+              <SelectTrigger className="h-8 text-xs bg-muted/40 border-border/60 focus:bg-background">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate">{selectedEmployeeLabel}</span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold">
+                      All
+                    </div>
+                    <span>All Employees</span>
+                  </div>
+                </SelectItem>
+                {employees.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No employees available
+                  </div>
+                ) : (
+                  employees.map((emp) => {
+                    const displayName = emp.name?.trim() || "Name unavailable";
+                    const initials = displayName
+                      .split(" ")
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "EM";
+                    return (
+                      <SelectItem key={emp.uid} value={emp.uid} className="text-xs">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5 text-[10px]">
+                            {emp.photoURL && (
+                              <AvatarImage src={emp.photoURL} alt={displayName} />
+                            )}
+                            <AvatarFallback className="text-[9px] bg-muted font-medium">
+                              {initials}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="truncate">{displayName}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Clear Button next to Employee Filter */}
+          {selectedEmployee !== "all" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedEmployee("all")}
+              className="h-8 px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground border-border/60 gap-1 shrink-0"
+              title="Clear Employee Filter"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Clear</span>
+            </Button>
+          )}
 
           {/* Quick Add Button */}
           <Button
@@ -891,7 +1027,7 @@ export function CrmKanbanPipeline({
                 (l) => l.stageId === stage.id || (!l.stageId && stage.sequence === 1)
               );
               const stageTotalRevenue = stageLeads.reduce(
-                (acc, l) => acc + (l.expectedRevenue || 0),
+                (acc, l) => acc + parseLeadRevenue(l.expectedRevenue),
                 0
               );
               const isTargetDrop = dragOverStageId === stage.id;
@@ -1198,86 +1334,86 @@ export function CrmKanbanPipeline({
 
       {/* VIEW 2: TABLE VIEW */}
       {viewMode === "table" && (
-        <div className="flex-1 flex flex-col overflow-hidden pt-3">
-          <div className="flex-1 overflow-x-auto overflow-y-auto border border-border/60 rounded-xl bg-card shadow-xs">
-            <table className="w-full text-xs text-left border-collapse min-w-[1000px]">
-              <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-border/60 backdrop-blur-sm">
+        <div className="flex-1 flex flex-col overflow-y-auto pt-3 pb-2 space-y-2.5">
+          <div className="overflow-x-auto max-h-[calc(100vh-14rem)] border border-border/60 rounded-xl bg-card shadow-xs">
+            <table className="w-full text-xs border-collapse min-w-[1080px] table-fixed">
+              <thead className="bg-muted/60 text-muted-foreground uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-border/60 backdrop-blur-sm">
                 <tr>
                   <th
                     onClick={() => handleSort("name")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[17%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-left"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <span>Opportunity Name</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                    <div className="flex items-center gap-1 truncate">
+                      <span className="truncate">Opportunity Name</span>
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
                   <th
                     onClick={() => handleSort("contact")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[14%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-left"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <span>Customer / Contact</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                    <div className="flex items-center gap-1 truncate">
+                      <span className="truncate">Customer / Contact</span>
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
-                  <th className="px-4 py-3 font-semibold">Phone</th>
-                  <th className="px-4 py-3 font-semibold">Email</th>
+                  <th className="w-[11%] px-3.5 py-2.5 font-semibold text-left">Phone</th>
+                  <th className="w-[14%] px-3.5 py-2.5 font-semibold text-left">Email</th>
                   <th
                     onClick={() => handleSort("stage")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[8%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Stage</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
                   <th
                     onClick={() => handleSort("revenue")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold text-right"
+                    className="w-[13%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-right"
                   >
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div className="inline-flex items-center justify-end gap-1 w-full">
                       <span>Expected Revenue</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
                   <th
                     onClick={() => handleSort("salesperson")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[10%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-left"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <span>Salesperson</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                    <div className="flex items-center gap-1 truncate">
+                      <span className="truncate">Salesperson</span>
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
                   <th
                     onClick={() => handleSort("closingDate")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[9%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Expected Closing</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
                   <th
                     onClick={() => handleSort("priority")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[7%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Priority</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
                   <th
                     onClick={() => handleSort("createdAt")}
-                    className="px-4 py-3 cursor-pointer hover:text-foreground transition-colors font-semibold"
+                    className="w-[8%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Created</span>
-                      <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  <th className="w-[5%] px-3.5 py-2.5 text-center font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -1310,33 +1446,33 @@ export function CrmKanbanPipeline({
                       <tr
                         key={lead.id}
                         onClick={() => handleCardClick(lead)}
-                        className="hover:bg-muted/40 cursor-pointer transition-colors group"
+                        className="hover:bg-muted/40 cursor-pointer transition-colors group h-12"
                       >
-                        {/* Name */}
-                        <td className="px-4 py-3 font-semibold text-foreground group-hover:text-primary transition-colors max-w-[220px] truncate">
+                        {/* 1. Name */}
+                        <td className="px-3.5 py-2.5 font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                           {lead.name}
                         </td>
 
-                        {/* Customer / Company */}
-                        <td className="px-4 py-3 text-muted-foreground max-w-[180px] truncate">
-                          <div>{lead.contactName || "—"}</div>
+                        {/* 2. Customer / Company */}
+                        <td className="px-3.5 py-2.5 text-muted-foreground truncate">
+                          <div className="truncate">{lead.contactName || "—"}</div>
                           {lead.company && (
-                            <div className="text-[10px] text-muted-foreground/70">{lead.company}</div>
+                            <div className="text-[10px] text-muted-foreground/70 truncate">{lead.company}</div>
                           )}
                         </td>
 
-                        {/* Phone */}
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {/* 3. Phone */}
+                        <td className="px-3.5 py-2.5 text-muted-foreground whitespace-nowrap">
                           {lead.phone || "—"}
                         </td>
 
-                        {/* Email */}
-                        <td className="px-4 py-3 text-muted-foreground max-w-[180px] truncate">
+                        {/* 4. Email */}
+                        <td className="px-3.5 py-2.5 text-muted-foreground truncate" title={lead.email}>
                           {lead.email || "—"}
                         </td>
 
-                        {/* Stage */}
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        {/* 5. Stage */}
+                        <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                           <span
                             className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-white"
                             style={{ backgroundColor: accentColor }}
@@ -1345,30 +1481,30 @@ export function CrmKanbanPipeline({
                           </span>
                         </td>
 
-                        {/* Expected Revenue */}
-                        <td className="px-4 py-3 text-right font-bold text-emerald-400 whitespace-nowrap">
+                        {/* 6. Expected Revenue */}
+                        <td className="px-3.5 py-2.5 text-right font-bold text-emerald-500 dark:text-emerald-400 whitespace-nowrap" title={formatINR(lead.expectedRevenue)}>
                           {formatINR(lead.expectedRevenue)}
                         </td>
 
-                        {/* Salesperson */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className="h-5 w-5 rounded-full bg-primary/20 text-primary border border-primary/30 flex items-center justify-center text-[9px] font-bold">
+                        {/* 7. Salesperson */}
+                        <td className="px-3.5 py-2.5 text-left whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="h-5 w-5 rounded-full bg-primary/20 text-primary border border-primary/30 flex items-center justify-center text-[9px] font-bold shrink-0">
                               {initials}
                             </span>
-                            <span className="text-foreground">{lead.assignedToName || "Admin"}</span>
+                            <span className="text-foreground truncate">{lead.assignedToName || "Admin"}</span>
                           </div>
                         </td>
 
-                        {/* Expected Closing Date */}
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {/* 8. Expected Closing Date */}
+                        <td className="px-3.5 py-2.5 text-center text-muted-foreground whitespace-nowrap">
                           {formatDate(lead.expectedClosing)}
                         </td>
 
-                        {/* Priority Stars */}
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        {/* 9. Priority Stars */}
+                        <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                           <div
-                            className="flex items-center gap-0.5"
+                            className="inline-flex items-center justify-center gap-0.5"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {[1, 2, 3].map((starIdx) => (
@@ -1391,19 +1527,19 @@ export function CrmKanbanPipeline({
                           </div>
                         </td>
 
-                        {/* Created Date */}
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-[11px]">
+                        {/* 10. Created Date */}
+                        <td className="px-3.5 py-2.5 text-center text-muted-foreground whitespace-nowrap text-[11px]">
                           {formatDate(lead.createdAt)}
                         </td>
 
-                        {/* Actions */}
+                        {/* 11. Actions */}
                         <td
-                          className="px-4 py-3 text-right whitespace-nowrap"
+                          className="px-3.5 py-2.5 text-center whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <DropdownMenu>
                             <DropdownMenuTrigger
-                              className="h-6 w-6 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+                              className="h-6 w-6 rounded-md hover:bg-muted inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
                               aria-label="Actions"
                             >
                               <MoreVertical className="h-3.5 w-3.5" />
@@ -1424,11 +1560,22 @@ export function CrmKanbanPipeline({
                   })
                 )}
               </tbody>
+              <tfoot className="bg-muted/40 border-t border-border/80 font-semibold text-xs">
+                <tr className="h-10">
+                  <td colSpan={5} className="px-3.5 py-2 text-foreground font-semibold text-left">
+                    Total ({filteredLeads.length} {filteredLeads.length === 1 ? "lead" : "leads"})
+                  </td>
+                  <td className="px-3.5 py-2 text-right text-emerald-600 dark:text-emerald-400 font-bold whitespace-nowrap">
+                    {formatINR(totalPipelineRevenue)}
+                  </td>
+                  <td colSpan={5} className="px-3.5 py-2"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
           {/* Table Pagination Footer */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 px-1 text-xs text-muted-foreground shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs text-muted-foreground shrink-0">
             <div className="flex items-center gap-2">
               <span>Rows per page:</span>
               <select

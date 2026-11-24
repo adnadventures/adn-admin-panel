@@ -13,9 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Building2,
   Bus,
-  Calendar,
   Check,
-  CreditCard,
   FileText,
   Hotel,
   MapPin,
@@ -26,7 +24,11 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createVendor, updateVendor } from "@/actions/vendors";
+import {
+  createVendor,
+  deleteVendorImageAction,
+  updateVendor,
+} from "@/actions/vendors";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -38,7 +40,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CURRENCIES, CURRENCY_CODES } from "@/lib/finance/currency";
 import {
   BUS_STATUSES,
   BUS_STATUS_LABELS,
@@ -51,8 +52,6 @@ import {
   HOTEL_PROPERTY_TYPE_LABELS,
   MEAL_PLANS,
   MEAL_PLAN_LABELS,
-  PAYMENT_TERMS,
-  PAYMENT_TERMS_LABELS,
   PERMIT_TYPES,
   PERMIT_TYPE_LABELS,
   VENDOR_STATUSES,
@@ -63,7 +62,10 @@ import {
   type BusDetailFormValues,
   type VendorFormValues,
 } from "@/lib/validators/vendor";
-import type { Vendor } from "@/types/models";
+import type { Vendor, VendorImage } from "@/types/models";
+import { DestinationAutocomplete } from "./destination-autocomplete";
+import { VendorImageUploader } from "./vendor-image-uploader";
+import { BusImageUploader } from "./bus-image-uploader";
 
 const selectClass =
   "border-input bg-background h-10 w-full rounded-md border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
@@ -100,46 +102,50 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
 
       // Location
       address: vendor?.address ?? "",
-      city: vendor?.city ?? "",
       state: vendor?.state ?? "",
       pincode: vendor?.pincode ?? "",
       destination: vendor?.destination ?? "",
       locationUrl: vendor?.locationUrl ?? "",
 
-      // Business & Financial
-      gstin: vendor?.gstin ?? "",
-      pan: vendor?.pan ?? "",
-      bankName: vendor?.bankName ?? "",
-      accountNumber: vendor?.accountNumber ?? "",
-      accountHolderName: vendor?.accountHolderName ?? "",
-      ifscCode: vendor?.ifscCode ?? "",
-      upiId: vendor?.upiId ?? "",
-      paymentTerms: (vendor?.paymentTerms as VendorFormValues["paymentTerms"]) ?? "immediate",
-      currency: vendor?.currency ?? "INR",
-
-      // Contracts & Notes
-      contractStartDate: vendor?.contractStartDate ?? "",
-      contractEndDate: vendor?.contractEndDate ?? "",
-      notes: vendor?.notes ?? "",
+      // Images
+      images: vendor?.images ?? [],
+      imageUrls: vendor?.imageUrls ?? [],
 
       // Category Details
       travelsDetails: {
         operatingRoutes: vendor?.travelsDetails?.operatingRoutes ?? [],
         fleetTypes: vendor?.travelsDetails?.fleetTypes ?? [],
-        buses: (vendor?.travelsDetails?.buses ?? []).map((bus) => ({
-          id: bus.id,
-          registrationNumber: bus.registrationNumber,
-          busType: (bus.busType as BusDetailFormValues["busType"]) || "ac_sleeper",
-          seatingCapacity: bus.seatingCapacity,
-          makeModel: bus.makeModel ?? "",
-          amenities: bus.amenities ?? [],
-          driverName: bus.driverName ?? "",
-          driverPhone: bus.driverPhone ?? "",
-          permitType: (bus.permitType as BusDetailFormValues["permitType"]) || "all_india",
-          fitnessExpiryDate: bus.fitnessExpiryDate ?? "",
-          insuranceExpiryDate: bus.insuranceExpiryDate ?? "",
-          status: bus.status ?? "active",
-        })),
+        buses: (vendor?.travelsDetails?.buses ?? []).map((bus) => {
+          const busImgs =
+            bus.images && bus.images.length > 0
+              ? bus.images
+              : bus.image
+                ? [bus.image]
+                : [];
+          const busImgUrls =
+            bus.imageUrls && bus.imageUrls.length > 0
+              ? bus.imageUrls
+              : bus.imageUrl
+                ? [bus.imageUrl]
+                : busImgs.map((i) => i.url);
+
+          return {
+            id: bus.id,
+            registrationNumber: bus.registrationNumber,
+            busType: (bus.busType as BusDetailFormValues["busType"]) || "ac_sleeper",
+            seatingCapacity: bus.seatingCapacity,
+            makeModel: bus.makeModel ?? "",
+            amenities: bus.amenities ?? [],
+            driverName: bus.driverName ?? "",
+            driverPhone: bus.driverPhone ?? "",
+            permitType: (bus.permitType as BusDetailFormValues["permitType"]) || "all_india",
+            status: bus.status ?? "active",
+            images: busImgs,
+            imageUrls: busImgUrls,
+            image: busImgs[0] ?? null,
+            imageUrl: busImgUrls[0] ?? "",
+          };
+        }),
         totalBusCount: vendor?.travelsDetails?.totalBusCount ?? 0,
         totalSeatCapacity: vendor?.travelsDetails?.totalSeatCapacity ?? 0,
         emergencyContact: vendor?.travelsDetails?.emergencyContact ?? "",
@@ -156,20 +162,35 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
         mealPlans: ((vendor?.hotelDetails as any)?.mealPlans ?? []) as any,
         cancellationPolicy: vendor?.hotelDetails?.cancellationPolicy ?? "",
         childPolicy: vendor?.hotelDetails?.childPolicy ?? "",
-        reservationEmail: vendor?.hotelDetails?.reservationEmail ?? "",
-        frontDeskPhone: vendor?.hotelDetails?.frontDeskPhone ?? "",
         tariffRange: vendor?.hotelDetails?.tariffRange ?? "",
       },
     },
   });
 
   const selectedType = useWatch({ control, name: "type" });
+  const watchedImages = (useWatch({ control, name: "images" }) as VendorImage[]) || [];
+  const watchedDestination = useWatch({ control, name: "destination" }) || "";
 
   // Watch buses array to automatically compute total buses & total seat capacity
   const watchedBuses = useWatch({
     control,
     name: "travelsDetails.buses",
   });
+
+  const watchedRoomTypes = useWatch({
+    control,
+    name: "hotelDetails.roomTypes",
+  }) || [];
+
+  const watchedHotelAmenities = useWatch({
+    control,
+    name: "hotelDetails.amenities",
+  }) || [];
+
+  const watchedMealPlans = useWatch({
+    control,
+    name: "hotelDetails.mealPlans",
+  }) || [];
 
   const computedTotalBuses = watchedBuses?.length ?? 0;
   const computedTotalSeats =
@@ -370,7 +391,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
 
             <div className="space-y-2">
               <Label htmlFor="vendor-email">
-                Primary Email <span className="text-destructive">*</span>
+                Primary Email
               </Label>
               <Input
                 id="vendor-email"
@@ -407,7 +428,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
               <Err m={errors.alternatePhone?.message} />
             </div>
 
-            {selectedType === "travels" ? (
+            {selectedType === "travels" && (
               <div className="space-y-2">
                 <Label htmlFor="travels-emergencyContact">24x7 Breakdown / Emergency Helpline</Label>
                 <Input
@@ -418,32 +439,8 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                 />
                 <Err m={errors.travelsDetails?.emergencyContact?.message} />
               </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="hotel-frontDeskPhone">Front Desk / Reception Direct Phone</Label>
-                <Input
-                  id="hotel-frontDeskPhone"
-                  type="tel"
-                  placeholder="+91 1902 252123"
-                  {...register("hotelDetails.frontDeskPhone")}
-                />
-                <Err m={errors.hotelDetails?.frontDeskPhone?.message} />
-              </div>
             )}
           </div>
-
-          {selectedType === "hotel" && (
-            <div className="space-y-2">
-              <Label htmlFor="hotel-reservationEmail">Reservation / Central Booking Email</Label>
-              <Input
-                id="hotel-reservationEmail"
-                type="email"
-                placeholder="reservations@grandresort.com"
-                {...register("hotelDetails.reservationEmail")}
-              />
-              <Err m={errors.hotelDetails?.reservationEmail?.message} />
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -455,7 +452,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
             Location & Operating Destination
           </CardTitle>
           <CardDescription>
-            Address, hub city, and tourism destination mapping for package integration.
+            Address, state, and primary tourism destination mapping for package integration.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -471,19 +468,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
             <Err m={errors.address?.message} />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="vendor-city">
-                City / Town <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="vendor-city"
-                placeholder="e.g. Manali"
-                {...register("city")}
-              />
-              <Err m={errors.city?.message} />
-            </div>
-
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="vendor-state">
                 State <span className="text-destructive">*</span>
@@ -507,15 +492,15 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="vendor-destination">
-                Primary Destination <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="vendor-destination"
-                placeholder="e.g. Manali / Goa / Kashmir"
-                {...register("destination")}
+              <DestinationAutocomplete
+                value={watchedDestination}
+                onChange={(dest: string) =>
+                  setValue("destination", dest, { shouldValidate: true })
+                }
+                error={errors.destination?.message}
+                label="Primary Destination"
+                required
               />
-              <Err m={errors.destination?.message} />
             </div>
           </div>
 
@@ -596,9 +581,11 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                         driverName: "",
                         driverPhone: "",
                         permitType: "all_india",
-                        fitnessExpiryDate: "",
-                        insuranceExpiryDate: "",
                         status: "active",
+                        images: [],
+                        imageUrls: [],
+                        image: null,
+                        imageUrl: "",
                       })
                     }
                   >
@@ -632,7 +619,20 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                               variant="ghost"
                               size="sm"
                               className="text-destructive hover:bg-destructive/10"
-                              onClick={() => removeBus(index)}
+                              onClick={() => {
+                                const busToRemove = watchedBuses?.[index];
+                                const keysToDelete = [
+                                  ...(busToRemove?.images?.map((i) => i.objectKey) || []),
+                                  busToRemove?.image?.objectKey,
+                                ].filter((k): k is string => Boolean(k));
+
+                                keysToDelete.forEach((key) => {
+                                  fetch(`/api/vendors/images?key=${encodeURIComponent(key)}`, {
+                                    method: "DELETE",
+                                  }).catch(() => deleteVendorImageAction(key));
+                                });
+                                removeBus(index);
+                              }}
                             >
                               <Trash2 className="size-4 mr-1" /> Remove
                             </Button>
@@ -734,7 +734,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                             </div>
                           </div>
 
-                          <div className="grid gap-4 sm:grid-cols-4">
+                          <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-2">
                               <Label htmlFor={`bus-${index}-driver`}>Assigned Driver Name</Label>
                               <Input
@@ -754,28 +754,6 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                                 placeholder="+91 9876543210"
                                 {...register(
                                   `travelsDetails.buses.${index}.driverPhone`,
-                                )}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor={`bus-${index}-fitness`}>Fitness Expiry Date</Label>
-                              <Input
-                                id={`bus-${index}-fitness`}
-                                type="date"
-                                {...register(
-                                  `travelsDetails.buses.${index}.fitnessExpiryDate`,
-                                )}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor={`bus-${index}-insurance`}>Insurance Expiry Date</Label>
-                              <Input
-                                id={`bus-${index}-insurance`}
-                                type="date"
-                                {...register(
-                                  `travelsDetails.buses.${index}.insuranceExpiryDate`,
                                 )}
                               />
                             </div>
@@ -816,6 +794,55 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                               })}
                             </div>
                           </div>
+
+                          {/* Individual Bus Image Upload */}
+                          <div className="pt-3 border-t border-border/60">
+                            <BusImageUploader
+                              busIndex={index}
+                              busNumber={
+                                watchedBuses?.[index]?.registrationNumber ||
+                                `Bus #${index + 1}`
+                              }
+                              images={
+                                watchedBuses?.[index]?.images &&
+                                watchedBuses[index].images.length > 0
+                                  ? watchedBuses[index].images
+                                  : watchedBuses?.[index]?.image
+                                    ? [watchedBuses[index].image!]
+                                    : []
+                              }
+                              imageUrls={
+                                watchedBuses?.[index]?.imageUrls &&
+                                watchedBuses[index].imageUrls.length > 0
+                                  ? watchedBuses[index].imageUrls
+                                  : watchedBuses?.[index]?.imageUrl
+                                    ? [watchedBuses[index].imageUrl!]
+                                    : []
+                              }
+                              onChange={(imgs, imgUrls) => {
+                                setValue(
+                                  `travelsDetails.buses.${index}.images`,
+                                  imgs,
+                                  { shouldValidate: true }
+                                );
+                                setValue(
+                                  `travelsDetails.buses.${index}.imageUrls`,
+                                  imgUrls,
+                                  { shouldValidate: true }
+                                );
+                                setValue(
+                                  `travelsDetails.buses.${index}.image`,
+                                  imgs[0] || null,
+                                  { shouldValidate: true }
+                                );
+                                setValue(
+                                  `travelsDetails.buses.${index}.imageUrl`,
+                                  imgUrls[0] || "",
+                                  { shouldValidate: true }
+                                );
+                              }}
+                            />
+                          </div>
                         </CardContent>
                       </Card>
                     );
@@ -836,9 +863,11 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                         driverName: "",
                         driverPhone: "",
                         permitType: "all_india",
-                        fitnessExpiryDate: "",
-                        insuranceExpiryDate: "",
                         status: "active",
+                        images: [],
+                        imageUrls: [],
+                        image: null,
+                        imageUrl: "",
                       })
                     }
                   >
@@ -924,10 +953,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                 <Label className="font-semibold text-sm">Room Categories Available</Label>
                 <div className="flex flex-wrap gap-2">
                   {COMMON_ROOM_TYPES.map((roomType) => {
-                    const currentRooms = useWatch({
-                      control,
-                      name: "hotelDetails.roomTypes",
-                    }) || [];
+                    const currentRooms = watchedRoomTypes || [];
                     const isChecked = currentRooms.includes(roomType);
 
                     return (
@@ -959,10 +985,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                 <Label className="font-semibold text-sm">Property Amenities & Facilities</Label>
                 <div className="flex flex-wrap gap-2">
                   {COMMON_HOTEL_AMENITIES.map((amenity) => {
-                    const currentAmenities = useWatch({
-                      control,
-                      name: "hotelDetails.amenities",
-                    }) || [];
+                    const currentAmenities = watchedHotelAmenities || [];
                     const isChecked = currentAmenities.includes(amenity);
 
                     return (
@@ -994,10 +1017,7 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
                 <Label className="font-semibold text-sm">Meal Plans Offered</Label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {MEAL_PLANS.map((plan) => {
-                    const currentPlans = useWatch({
-                      control,
-                      name: "hotelDetails.mealPlans",
-                    }) || [];
+                    const currentPlans = watchedMealPlans || [];
                     const isChecked = currentPlans.includes(plan);
 
                     return (
@@ -1071,176 +1091,20 @@ export function VendorForm({ vendor }: { vendor: Vendor | null }) {
               </div>
             </CardContent>
           </Card>
+
+          {/* HOTEL PROPERTY IMAGES */}
+          <VendorImageUploader
+            vendorType="hotel"
+            initialImages={watchedImages}
+            onChange={(imgs: VendorImage[]) => {
+              setValue("images", imgs, { shouldValidate: true });
+              setValue("imageUrls", imgs.map((i: VendorImage) => i.url));
+            }}
+          />
         </div>
       )}
 
-      {/* 5. FINANCIAL, TAX & BANKING DETAILS */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CreditCard className="text-primary size-5" />
-            Tax, Banking & Settlement Details
-          </CardTitle>
-          <CardDescription>
-            Required for recording booking expenses, vendor disbursements, and tax reconciliation.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="vendor-gstin">GSTIN (15 Digits)</Label>
-              <Input
-                id="vendor-gstin"
-                placeholder="e.g. 02ABCDE1234F1Z5"
-                className="font-mono uppercase"
-                {...register("gstin")}
-              />
-              <Err m={errors.gstin?.message} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-pan">PAN Number (10 Digits)</Label>
-              <Input
-                id="vendor-pan"
-                placeholder="e.g. ABCDE1234F"
-                className="font-mono uppercase"
-                {...register("pan")}
-              />
-              <Err m={errors.pan?.message} />
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="vendor-bankName">Bank Name</Label>
-              <Input
-                id="vendor-bankName"
-                placeholder="e.g. HDFC Bank / State Bank of India"
-                {...register("bankName")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-accountNumber">Account Number</Label>
-              <Input
-                id="vendor-accountNumber"
-                placeholder="e.g. 50100123456789"
-                className="font-mono"
-                {...register("accountNumber")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-accountHolderName">Account Holder Name</Label>
-              <Input
-                id="vendor-accountHolderName"
-                placeholder="e.g. Himalayan Travels Pvt Ltd"
-                {...register("accountHolderName")}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="vendor-ifscCode">IFSC Code (11 Digits)</Label>
-              <Input
-                id="vendor-ifscCode"
-                placeholder="e.g. HDFC0001234"
-                className="font-mono uppercase"
-                {...register("ifscCode")}
-              />
-              <Err m={errors.ifscCode?.message} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-upiId">UPI ID / VPA</Label>
-              <Input
-                id="vendor-upiId"
-                placeholder="e.g. vendor@okhdfcbank"
-                {...register("upiId")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-paymentTerms">Payment / Credit Terms</Label>
-              <select
-                id="vendor-paymentTerms"
-                className={selectClass}
-                {...register("paymentTerms")}
-              >
-                {PAYMENT_TERMS.map((pt) => (
-                  <option key={pt} value={pt}>
-                    {PAYMENT_TERMS_LABELS[pt]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-currency">Preferred Settlement Currency</Label>
-              <select
-                id="vendor-currency"
-                className={selectClass}
-                {...register("currency")}
-              >
-                {CURRENCY_CODES.map((c) => (
-                  <option key={c} value={c}>
-                    {c} ({CURRENCIES[c].name})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 6. CONTRACT PERIOD & OPERATIONAL NOTES */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar className="text-primary size-5" />
-            Contract Terms & Operational Notes
-          </CardTitle>
-          <CardDescription>
-            Agreement validity dates, special vendor conditions, and internal notes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="vendor-contractStartDate">Agreement Start Date</Label>
-              <Input
-                id="vendor-contractStartDate"
-                type="date"
-                {...register("contractStartDate")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-contractEndDate">Agreement End Date</Label>
-              <Input
-                id="vendor-contractEndDate"
-                type="date"
-                {...register("contractEndDate")}
-              />
-              <Err m={errors.contractEndDate?.message} />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="vendor-notes">General Notes & Special Contract Terms</Label>
-            <Textarea
-              id="vendor-notes"
-              rows={3}
-              placeholder="e.g. Fixed peak season rates apply during December-January. Minimum 24 hours advance notice required for additional buses."
-              {...register("notes")}
-            />
-            <Err m={errors.notes?.message} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 7. FORM SUBMISSION BAR */}
+      {/* FORM SUBMISSION BAR */}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
         <Link
           href={vendor ? `/vendors/${vendor.id}` : "/vendors"}

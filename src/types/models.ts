@@ -102,6 +102,33 @@ export type Booking = Meta & {
   totalAmount: number; // sum of active member prices
   status: BookingStatus;
   notes: string;
+  vendorIds?: string[];
+  vendors?: BookingVendorSummary[];
+};
+
+export type BookingVendorSummary = {
+  id: string;
+  name: string;
+  type: VendorType;
+  destination: string;
+  contactPerson?: string;
+  phone?: string;
+  imageUrls?: string[];
+};
+
+export type Destination = Meta & {
+  name: string;
+  searchName: string;
+};
+
+export type VendorImage = {
+  id: string;
+  name: string;
+  objectKey: string;
+  url: string;
+  size: number;
+  contentType: string;
+  uploadedAt: string;
 };
 
 export type Member = Meta & {
@@ -301,6 +328,10 @@ export type BusDetail = {
   fitnessExpiryDate?: string; // "YYYY-MM-DD"
   insuranceExpiryDate?: string; // "YYYY-MM-DD"
   status: "active" | "maintenance" | "inactive";
+  images?: VendorImage[];
+  imageUrls?: string[];
+  image?: VendorImage | null;
+  imageUrl?: string;
 };
 
 export type VendorTravelsDetails = {
@@ -345,11 +376,15 @@ export type Vendor = Meta & {
 
   // Location
   address: string;
-  city: string;
+  city?: string;
   state: string;
   pincode: string;
   destination: string; // primary destination / route coverage area
   locationUrl?: string; // Google Maps URL
+
+  // Images
+  images?: VendorImage[];
+  imageUrls?: string[];
 
   // Business / Tax / Financial
   gstin?: string;

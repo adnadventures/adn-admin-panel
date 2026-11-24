@@ -618,3 +618,49 @@ export async function getCrmDashboardStats(): Promise<CrmDashboardStats> {
     performanceByOwner,
   };
 }
+
+export type CrmEmployee = {
+  uid: string;
+  name: string;
+  email?: string;
+  role?: string;
+  photoURL?: string;
+};
+
+/**
+ * Loads eligible employees for CRM filtering.
+ * Reuses the Settings employee management source of truth:
+ * Only genuine employees created through Settings (customClaims.role === 'employee').
+ * Strictly excludes Admin, Super Admin, logged-in admin, and unrelated accounts.
+ */
+export async function listCrmEmployees(): Promise<CrmEmployee[]> {
+  const employees: CrmEmployee[] = [];
+
+  try {
+    const { adminAuth } = await import("@/lib/firebase/admin");
+    let pageToken: string | undefined;
+
+    do {
+      const page = await adminAuth.listUsers(1000, pageToken);
+      for (const user of page.users) {
+        // Exclude accounts that are not genuine Settings-created employees
+        if (user.customClaims?.role !== "employee") continue;
+        if (user.disabled) continue;
+
+        const name = user.displayName?.trim() || "Name unavailable";
+        employees.push({
+          uid: user.uid,
+          name,
+          email: user.email || "",
+          photoURL: user.photoURL,
+          role: "employee",
+        });
+      }
+      pageToken = page.pageToken;
+    } while (pageToken);
+  } catch (err) {
+    console.error("Error listing Settings employees for CRM:", err);
+  }
+
+  return employees.sort((a, b) => a.name.localeCompare(b.name));
+}

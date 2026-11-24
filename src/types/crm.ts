@@ -55,6 +55,7 @@ export type CrmLead = CrmMeta & {
   expectedBudget?: number;
   assignedTo?: string;
   assignedToName?: string;
+  createdByName?: string;
   description?: string;
   notes?: string;
   tags?: string[];

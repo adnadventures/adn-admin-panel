@@ -11,16 +11,13 @@ import {
   Hotel,
   MapPin,
   MoreHorizontal,
-  Phone,
-  Plus,
   Search,
   Trash2,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteVendor, setVendorStatus } from "@/actions/vendors";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -44,7 +41,7 @@ export function VendorsTable({ vendors, canManage }: Props) {
   const [filterStatus, setFilterStatus] = useState<"all" | VendorStatus>("all");
   const [search, setSearch] = useState("");
   const [deletingVendor, setDeletingVendor] = useState<Vendor | null>(null);
-  const [busy, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
     return vendors.filter((v) => {
@@ -56,8 +53,8 @@ export function VendorsTable({ vendors, canManage }: Props) {
         const matchTrade = v.tradeName?.toLowerCase().includes(q);
         const matchContact = v.contactPerson.toLowerCase().includes(q);
         const matchPhone = v.phone.includes(q);
-        const matchCity = v.city.toLowerCase().includes(q);
-        const matchDest = v.destination.toLowerCase().includes(q);
+        const matchCity = v.city ? v.city.toLowerCase().includes(q) : false;
+        const matchDest = v.destination ? v.destination.toLowerCase().includes(q) : false;
         if (
           !matchName &&
           !matchTrade &&
@@ -161,15 +158,6 @@ export function VendorsTable({ vendors, canManage }: Props) {
             <option value="inactive">Inactive</option>
             <option value="blocked">Blocked</option>
           </select>
-
-          {canManage && (
-            <Link
-              href="/vendors/new"
-              className={buttonVariants({ size: "sm", className: "gap-1" })}
-            >
-              <Plus className="size-4" /> Add Vendor
-            </Link>
-          )}
         </div>
       </div>
 

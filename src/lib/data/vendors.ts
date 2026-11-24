@@ -1,7 +1,7 @@
 import "server-only";
 import { adminDb } from "@/lib/firebase/admin";
 import { COL, serializeDoc } from "@/lib/firestore/helpers";
-import type { Vendor, VendorType } from "@/types/models";
+import type { Vendor, VendorImage, VendorType } from "@/types/models";
 
 function normalizeVendor(v: Vendor): Vendor {
   return {
@@ -11,6 +11,8 @@ function normalizeVendor(v: Vendor): Vendor {
     designation: v.designation ?? "",
     pincode: v.pincode ?? "",
     locationUrl: v.locationUrl ?? "",
+    images: v.images ?? [],
+    imageUrls: v.imageUrls ?? (v.images?.map((img: VendorImage) => img.url) ?? []),
     gstin: v.gstin ?? "",
     pan: v.pan ?? "",
     bankName: v.bankName ?? "",

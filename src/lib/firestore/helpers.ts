@@ -17,6 +17,7 @@ export const COL = {
   auditLogs: "auditLogs",
   targets: "targets",
   vendors: "vendors",
+  destinations: "destinations",
   crmStages: "crmStages",
   crmLeads: "crmLeads",
   crmContacts: "crmContacts",

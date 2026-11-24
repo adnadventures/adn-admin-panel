@@ -17,7 +17,6 @@ import {
   Building,
   Star,
   Search,
-  Paperclip,
   Users,
   ChevronRight,
   Send,
@@ -69,14 +68,20 @@ interface LeadDetailViewProps {
   initialActivities: CrmActivity[];
 }
 
-function formatINR(val?: number): string {
-  if (val === undefined || val === null || isNaN(val)) return "₹ 0.00";
+function formatINR(val?: unknown): string {
+  if (val === undefined || val === null) return "₹ 0";
+  let num = 0;
+  if (typeof val === "number") {
+    num = isNaN(val) || !isFinite(val) ? 0 : Math.max(0, Math.round(val));
+  } else if (typeof val === "string") {
+    const cleaned = val.replace(/[^0-9.-]/g, "").trim();
+    num = cleaned ? Math.max(0, Math.round(parseFloat(cleaned) || 0)) : 0;
+  }
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(val);
+    maximumFractionDigits: 0,
+  }).format(num);
 }
 
 function formatChatterTimestamp(isoString: string): string {
@@ -525,33 +530,6 @@ export function LeadDetailView({
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Pipeline</span>
           </Link>
-
-          <Button
-            size="sm"
-            onClick={handleWonClick}
-            className={cn(
-              "h-7 text-xs font-semibold px-3 transition-all",
-              lead.stageName === "Won" || lead.leadStatus === "converted"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
-            )}
-          >
-            Won
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setLostModalOpen(true)}
-            className={cn(
-              "h-7 text-xs font-medium px-3",
-              lead.isLost
-                ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                : "border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-            )}
-          >
-            Lost
-          </Button>
 
           {lead.isLost && (
             <Badge variant="destructive" className="text-[10px] h-6">
@@ -1011,6 +989,38 @@ export function LeadDetailView({
                     />
                   </div>
                 </div>
+
+                {/* Creator and Audit Information */}
+                <div className="col-span-2 pt-3 mt-2 border-t border-border/40 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/20 p-3 rounded-lg text-xs">
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Created By</span>
+                    <span className="font-semibold text-foreground">
+                      {lead.createdByName || lead.createdBy || "Admin"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Created On</span>
+                    <span className="font-semibold text-foreground">
+                      {new Date(lead.createdAt).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Stage</span>
+                    <span className="font-semibold text-foreground">
+                      {lead.stageName || "New"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Assigned Employee</span>
+                    <span className="font-semibold text-foreground">
+                      {formData.salesperson || "Admin"}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1076,7 +1086,7 @@ export function LeadDetailView({
               </Button>
             </div>
 
-            {/* Utility Icons: Search, Attachment, Followers */}
+            {/* Utility Icons: Search, Followers */}
             <div className="flex items-center gap-1 text-muted-foreground">
               <button
                 type="button"
@@ -1085,14 +1095,6 @@ export function LeadDetailView({
                 className="p-1.5 rounded hover:text-foreground hover:bg-muted transition-colors"
               >
                 <Search className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                title="Attachments"
-                onClick={() => toast.info("No attachments uploaded yet")}
-                className="p-1.5 rounded hover:text-foreground hover:bg-muted transition-colors"
-              >
-                <Paperclip className="h-3.5 w-3.5" />
               </button>
               <div
                 title="1 Follower (Tech MAD'S)"

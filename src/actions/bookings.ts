@@ -9,7 +9,14 @@ import {
   COL, auditEntry, createMeta, deleteMeta, toSearchName, updateMeta,
 } from "@/lib/firestore/helpers";
 import { bookingInputSchema } from "@/lib/validators/booking";
-import type { AgeCategory, BookingStatus, PerCategory } from "@/types/models";
+import type {
+  AgeCategory,
+  BookingStatus,
+  BookingVendorSummary,
+  PerCategory,
+  Vendor,
+  VendorImage,
+} from "@/types/models";
 import type { Role } from "@/types/roles";
 
 type Result = { ok: true; id: string } | { ok: false; error: string };
@@ -19,6 +26,29 @@ class UserError extends Error {}
 function fail(e: unknown): Result {
   if (e instanceof UserError) return { ok: false, error: e.message };
   throw e;
+}
+
+async function resolveBookingVendors(vendorIds: string[]): Promise<BookingVendorSummary[]> {
+  if (!vendorIds || vendorIds.length === 0) return [];
+  const snaps = await Promise.all(
+    vendorIds.map((vid) => adminDb.collection(COL.vendors).doc(vid).get())
+  );
+  return snaps
+    .filter((snap) => snap.exists)
+    .map((snap) => {
+      const data = snap.data() as Partial<Vendor>;
+      return {
+        id: snap.id,
+        name: data.name ?? "",
+        type: data.type ?? "travels",
+        destination: data.destination ?? "",
+        contactPerson: data.contactPerson ?? "",
+        phone: data.phone ?? "",
+        imageUrls: (data.images && data.images.length > 0)
+          ? data.images.map((img: VendorImage) => img.url)
+          : (data.imageUrls ?? []),
+      };
+    });
 }
 
 type Raw = {
@@ -33,6 +63,7 @@ export async function createBooking(input: unknown): Promise<Result> {
   const d = parsed.data;
 
   try {
+    const vendorSummaries = await resolveBookingVendors(d.vendorIds);
     const id = await adminDb.runTransaction(async (tx) => {
       const year = todayIST().slice(0, 4);
       const pkgRef = adminDb.collection(COL.packages).doc(d.packageId);
@@ -68,6 +99,8 @@ export async function createBooking(input: unknown): Promise<Result> {
         totalAmount: 0,
         status: "open",
         notes: d.notes,
+        vendorIds: d.vendorIds ?? [],
+        vendors: vendorSummaries,
         ...createMeta(user),
       });
       tx.set(
@@ -96,6 +129,7 @@ export async function updateBooking(id: string, input: unknown): Promise<Result>
   };
 
   try {
+    const vendorSummaries = await resolveBookingVendors(d.vendorIds);
     await adminDb.runTransaction(async (tx) => {
       const ref = adminDb.collection(COL.bookings).doc(id);
       const snap = await tx.get(ref);
@@ -143,6 +177,8 @@ export async function updateBooking(id: string, input: unknown): Promise<Result>
         rates,
         totalAmount: total,
         notes: d.notes,
+        vendorIds: d.vendorIds ?? [],
+        vendors: vendorSummaries,
         ...updateMeta(user),
       });
       tx.set(

@@ -1077,7 +1077,7 @@ export async function quickCreateLead(raw: QuickLeadInput): Promise<{ ok: true; 
     stageName: d.stageName,
     contactName: d.contactName || d.name,
     company: d.company || "",
-    expectedRevenue: d.expectedRevenue,
+    expectedRevenue: Number(d.expectedRevenue) || 0,
     assignedTo: d.assignedTo || user.uid,
     assignedToName: d.assignedToName || user.name || "Admin",
     priority: d.priority,
@@ -1089,6 +1089,7 @@ export async function quickCreateLead(raw: QuickLeadInput): Promise<{ ok: true; 
     createdAt: now,
     updatedAt: now,
     createdBy: user.uid,
+    createdByName: user.name || "Admin",
     updatedBy: user.uid,
     isDeleted: false,
   };
@@ -1195,11 +1196,15 @@ export async function updateLeadDetails(
   if (!snap.exists) return { ok: false, error: "Lead not found" };
 
   const meta = updateMeta(user);
+  const sanitizedData = { ...data };
+  if (sanitizedData.expectedRevenue !== undefined) {
+    sanitizedData.expectedRevenue = Number(sanitizedData.expectedRevenue) || 0;
+  }
   const batch = adminDb.batch();
-  batch.update(docRef, { ...data, ...meta });
+  batch.update(docRef, { ...sanitizedData, ...meta });
   batch.set(
     adminDb.collection(COL.auditLogs).doc(),
-    auditEntry(user, "crm_lead.update_details", "crmLead", leadId, data)
+    auditEntry(user, "crm_lead.update_details", "crmLead", leadId, sanitizedData)
   );
 
   await batch.commit();

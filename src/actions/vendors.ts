@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { adminDb } from "@/lib/firebase/admin";
-import { requireModule, requireModuleEditor } from "@/lib/auth/session";
+import { getCurrentUser, requireModule, requireModuleEditor } from "@/lib/auth/session";
 import {
   COL,
   auditEntry,
@@ -17,8 +17,12 @@ import {
   type VendorFormValues,
 } from "@/lib/validators/vendor";
 import type { Role } from "@/types/roles";
-import type { Vendor, VendorStatus } from "@/types/models";
-import { getVendor, listVendors } from "@/lib/data/vendors";
+import type { Vendor, VendorImage, VendorStatus } from "@/types/models";
+import { listVendors } from "@/lib/data/vendors";
+import {
+  deleteVendorImageFromR2,
+  uploadVendorImageToR2,
+} from "@/lib/r2/vendor-storage";
 
 type Result = { ok: true; id: string } | { ok: false; error: string };
 type StatusResult = { ok: true } | { ok: false; error: string };
@@ -26,6 +30,11 @@ type StatusResult = { ok: true } | { ok: false; error: string };
 const MANAGE: Role[] = ["admin", "manager"];
 
 function prepareVendorDoc(data: VendorFormValues) {
+  const imageUrls =
+    data.imageUrls && data.imageUrls.length > 0
+      ? data.imageUrls
+      : data.images?.map((img) => img.url) || [];
+
   const base = {
     type: data.type,
     name: data.name.trim(),
@@ -39,49 +48,53 @@ function prepareVendorDoc(data: VendorFormValues) {
     phone: data.phone.trim(),
     phoneDigits: data.phone.replace(/\D/g, "").slice(-10),
     alternatePhone: data.alternatePhone?.trim() || "",
-    email: data.email.trim().toLowerCase(),
+    email: data.email?.trim().toLowerCase() || "",
 
     // Location
     address: data.address.trim(),
-    city: data.city.trim(),
     state: data.state.trim(),
     pincode: data.pincode?.trim() || "",
     destination: data.destination.trim(),
     locationUrl: data.locationUrl?.trim() || "",
 
-    // Business & Financial
-    gstin: data.gstin?.trim().toUpperCase() || "",
-    pan: data.pan?.trim().toUpperCase() || "",
-    bankName: data.bankName?.trim() || "",
-    accountNumber: data.accountNumber?.trim() || "",
-    accountHolderName: data.accountHolderName?.trim() || "",
-    ifscCode: data.ifscCode?.trim().toUpperCase() || "",
-    upiId: data.upiId?.trim() || "",
-    paymentTerms: data.paymentTerms,
-    currency: data.currency,
-
-    // Contracts & Notes
-    contractStartDate: data.contractStartDate?.trim() || "",
-    contractEndDate: data.contractEndDate?.trim() || "",
-    notes: data.notes?.trim() || "",
+    // Images
+    images: data.images || [],
+    imageUrls,
   };
 
   if (data.type === "travels" && data.travelsDetails) {
     const rawBuses = data.travelsDetails.buses || [];
-    const buses = rawBuses.map((bus, idx) => ({
-      id: bus.id || `bus-${Date.now()}-${idx}`,
-      registrationNumber: bus.registrationNumber.trim().toUpperCase(),
-      busType: bus.busType,
-      seatingCapacity: Number(bus.seatingCapacity) || 0,
-      makeModel: bus.makeModel?.trim() || "",
-      amenities: bus.amenities || [],
-      driverName: bus.driverName?.trim() || "",
-      driverPhone: bus.driverPhone?.trim() || "",
-      permitType: bus.permitType || "all_india",
-      fitnessExpiryDate: bus.fitnessExpiryDate?.trim() || "",
-      insuranceExpiryDate: bus.insuranceExpiryDate?.trim() || "",
-      status: bus.status || "active",
-    }));
+    const buses = rawBuses.map((bus, idx) => {
+      const busImgs =
+        bus.images && bus.images.length > 0
+          ? bus.images
+          : bus.image
+            ? [bus.image]
+            : [];
+      const busImgUrls =
+        bus.imageUrls && bus.imageUrls.length > 0
+          ? bus.imageUrls
+          : bus.imageUrl
+            ? [bus.imageUrl]
+            : busImgs.map((i) => i.url);
+
+      return {
+        id: bus.id || `bus-${Date.now()}-${idx}`,
+        registrationNumber: bus.registrationNumber.trim().toUpperCase(),
+        busType: bus.busType,
+        seatingCapacity: Number(bus.seatingCapacity) || 0,
+        makeModel: bus.makeModel?.trim() || "",
+        amenities: bus.amenities || [],
+        driverName: bus.driverName?.trim() || "",
+        driverPhone: bus.driverPhone?.trim() || "",
+        permitType: bus.permitType || "all_india",
+        status: bus.status || "active",
+        images: busImgs,
+        imageUrls: busImgUrls,
+        image: busImgs[0] || null,
+        imageUrl: busImgUrls[0] || "",
+      };
+    });
 
     const totalBusCount = buses.length;
     const totalSeatCapacity = buses.reduce(
@@ -89,8 +102,15 @@ function prepareVendorDoc(data: VendorFormValues) {
       0,
     );
 
+    const busImageUrls = buses.flatMap((b) => b.imageUrls).filter(Boolean);
+    const busImages = buses
+      .flatMap((b) => b.images)
+      .filter((img): img is VendorImage => Boolean(img));
+
     return {
       ...base,
+      images: busImages.length > 0 ? busImages : base.images,
+      imageUrls: busImageUrls.length > 0 ? busImageUrls : base.imageUrls,
       travelsDetails: {
         operatingRoutes: data.travelsDetails.operatingRoutes || [],
         fleetTypes: data.travelsDetails.fleetTypes || [],
@@ -117,8 +137,6 @@ function prepareVendorDoc(data: VendorFormValues) {
         mealPlans: data.hotelDetails.mealPlans || [],
         cancellationPolicy: data.hotelDetails.cancellationPolicy?.trim() || "",
         childPolicy: data.hotelDetails.childPolicy?.trim() || "",
-        reservationEmail: data.hotelDetails.reservationEmail?.trim().toLowerCase() || "",
-        frontDeskPhone: data.hotelDetails.frontDeskPhone?.trim() || "",
         tariffRange: data.hotelDetails.tariffRange?.trim() || "",
       },
       travelsDetails: null,
@@ -130,7 +148,6 @@ function prepareVendorDoc(data: VendorFormValues) {
 
 async function findDuplicateVendor(
   name: string,
-  phoneDigits: string,
   exceptId?: string,
 ) {
   const col = adminDb.collection(COL.vendors);
@@ -147,20 +164,121 @@ async function findDuplicateVendor(
     return `A vendor with this name already exists: "${hitName.data().name}"`;
   }
 
-  if (phoneDigits.length >= 7) {
-    const phoneSnap = await col
+  return null;
+}
+
+async function ensureDestinationPersisted(destName: string) {
+  const trimmed = destName.trim();
+  if (!trimmed) return;
+  const searchName = toSearchName(trimmed);
+
+  const snap = await adminDb
+    .collection(COL.destinations)
+    .where("isDeleted", "==", false)
+    .where("searchName", "==", searchName)
+    .limit(1)
+    .get();
+
+  if (snap.empty) {
+    const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+    await adminDb.collection(COL.destinations).add({
+      name: formatted,
+      searchName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isDeleted: false,
+    });
+  }
+}
+
+export async function getDestinationsAction(): Promise<string[]> {
+  try {
+    const snap = await adminDb
+      .collection(COL.destinations)
       .where("isDeleted", "==", false)
-      .where("phoneDigits", "==", phoneDigits)
-      .limit(2)
       .get();
 
-    const hitPhone = phoneSnap.docs.find((d) => d.id !== exceptId);
-    if (hitPhone) {
-      return `A vendor with this phone already exists: "${hitPhone.data().name}"`;
-    }
-  }
+    const fromCol = snap.docs.map((d) => (d.data().name as string) || "").filter(Boolean);
 
-  return null;
+    // Also collect distinct destinations from existing vendors
+    const vendorSnap = await adminDb
+      .collection(COL.vendors)
+      .where("isDeleted", "==", false)
+      .get();
+
+    const fromVendors = vendorSnap.docs
+      .map((d) => (d.data().destination as string) || "")
+      .filter(Boolean);
+
+    const merged = Array.from(new Set([...fromCol, ...fromVendors])).sort();
+    return merged;
+  } catch (err) {
+    console.error("Error fetching destinations:", err);
+    return [];
+  }
+}
+
+export async function saveDestinationAction(name: string): Promise<void> {
+  await ensureDestinationPersisted(name);
+}
+
+export async function uploadVendorImageAction(
+  formData: FormData
+): Promise<{ ok: true; image: VendorImage } | { ok: false; error: string }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { ok: false, error: "Authentication required" };
+    }
+    const file = formData.get("file") as File | null;
+    const vendorType = (formData.get("vendorType") as "travels" | "hotel") || "travels";
+
+    if (!file) {
+      return { ok: false, error: "No file provided" };
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const { objectKey, url } = await uploadVendorImageToR2(
+      buffer,
+      file.name,
+      file.type,
+      vendorType
+    );
+
+    const image: VendorImage = {
+      id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: file.name,
+      objectKey,
+      url,
+      size: file.size,
+      contentType: file.type,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    return { ok: true, image };
+  } catch (err: unknown) {
+    console.error("Upload vendor image error:", err);
+    const msg = err instanceof Error ? err.message : "Failed to upload image";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function deleteVendorImageAction(
+  objectKey: string
+): Promise<{ ok: boolean }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { ok: false };
+    }
+    await deleteVendorImageFromR2(objectKey);
+    return { ok: true };
+  } catch (err) {
+    console.error("Delete vendor image error:", err);
+    return { ok: false };
+  }
 }
 
 export async function createVendor(input: unknown): Promise<Result> {
@@ -175,7 +293,6 @@ export async function createVendor(input: unknown): Promise<Result> {
 
   const duplicate = await findDuplicateVendor(
     docData.name,
-    docData.phoneDigits,
   );
   if (duplicate) {
     return { ok: false, error: duplicate };
@@ -199,6 +316,7 @@ export async function createVendor(input: unknown): Promise<Result> {
   );
 
   await batch.commit();
+  await ensureDestinationPersisted(docData.destination);
 
   revalidatePath("/vendors");
   revalidatePath("/");
@@ -226,7 +344,6 @@ export async function updateVendor(
 
   const duplicate = await findDuplicateVendor(
     docData.name,
-    docData.phoneDigits,
     id,
   );
   if (duplicate) {
@@ -254,6 +371,7 @@ export async function updateVendor(
   );
 
   await batch.commit();
+  await ensureDestinationPersisted(docData.destination);
 
   revalidatePath("/vendors");
   revalidatePath(`/vendors/${id}`);

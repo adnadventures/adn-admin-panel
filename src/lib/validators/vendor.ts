@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { CURRENCY_CODES } from "@/lib/finance/currency";
 
 export const VENDOR_TYPES = ["travels", "hotel"] as const;
 export type VendorType = (typeof VENDOR_TYPES)[number];
@@ -173,7 +172,10 @@ export const emailValidator = (required = false) => {
   if (required) {
     return schema.min(1, "Email is required").email("Enter a valid email address");
   }
-  return schema.refine((v) => v === "" || z.string().email().safeParse(v).success, "Enter a valid email address");
+  return schema
+    .optional()
+    .transform((v) => (v === undefined || v === null ? "" : v))
+    .refine((v) => v === "" || z.string().email().safeParse(v).success, "Enter a valid email address");
 };
 
 export const gstinValidator = optionalStr(15).refine(
@@ -196,6 +198,17 @@ export const dateStringValidator = z
   .trim()
   .refine((v) => v === "" || /^\d{4}-\d{2}-\d{2}$/.test(v), "Use YYYY-MM-DD date format");
 
+export const vendorImageSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  objectKey: z.string(),
+  url: z.string(),
+  size: z.number(),
+  contentType: z.string(),
+  uploadedAt: z.string(),
+});
+export type VendorImageFormValues = z.infer<typeof vendorImageSchema>;
+
 /* Individual Bus Schema */
 export const busDetailSchema = z.object({
   id: z.string().default(() => Math.random().toString(36).substring(2, 9)),
@@ -216,9 +229,11 @@ export const busDetailSchema = z.object({
   driverName: optionalStr(80),
   driverPhone: phoneValidator(false),
   permitType: z.enum(PERMIT_TYPES).default("all_india"),
-  fitnessExpiryDate: dateStringValidator.default(""),
-  insuranceExpiryDate: dateStringValidator.default(""),
   status: z.enum(BUS_STATUSES).default("active"),
+  images: z.array(vendorImageSchema).default([]),
+  imageUrls: z.array(z.string()).default([]),
+  image: vendorImageSchema.nullable().optional(),
+  imageUrl: z.string().optional(),
 });
 
 export type BusDetailFormValues = z.infer<typeof busDetailSchema>;
@@ -245,8 +260,6 @@ export const hotelDetailsSchema = z.object({
   mealPlans: z.array(z.enum(MEAL_PLANS)).default([]),
   cancellationPolicy: optionalStr(500).default(""),
   childPolicy: optionalStr(500).default(""),
-  reservationEmail: emailValidator(false).default(""),
-  frontDeskPhone: phoneValidator(false).default(""),
   tariffRange: optionalStr(60).default(""),
 });
 
@@ -265,46 +278,24 @@ export const vendorFormSchema = z
     designation: optionalStr(60).default(""),
     phone: phoneValidator(true),
     alternatePhone: phoneValidator(false).default(""),
-    email: emailValidator(true),
+    email: emailValidator(false).default(""),
 
     // Location
     address: z.string().trim().min(3, "Address is required").max(300, "Max 300 characters"),
-    city: z.string().trim().min(2, "City is required").max(80, "Max 80 characters"),
     state: z.string().trim().min(2, "State is required").max(80, "Max 80 characters"),
     pincode: optionalStr(12).default(""),
     destination: z.string().trim().min(2, "Destination / Region is required").max(100, "Max 100 characters"),
     locationUrl: optionalStr(300).refine((v) => v === "" || /^https?:\/\//.test(v), "Enter a valid URL (starting with http:// or https://)").default(""),
 
-    // Business & Financial
-    gstin: gstinValidator.default(""),
-    pan: panValidator.default(""),
-    bankName: optionalStr(80).default(""),
-    accountNumber: optionalStr(40).default(""),
-    accountHolderName: optionalStr(100).default(""),
-    ifscCode: ifscValidator.default(""),
-    upiId: optionalStr(60).default(""),
-    paymentTerms: z.enum(PAYMENT_TERMS).default("immediate"),
-    currency: z.enum(CURRENCY_CODES).default("INR"),
-
-    // Contracts & Notes
-    contractStartDate: dateStringValidator.default(""),
-    contractEndDate: dateStringValidator.default(""),
-    notes: optionalStr(1000).default(""),
+    // Images
+    images: z.array(vendorImageSchema).default([]),
+    imageUrls: z.array(z.string()).default([]),
 
     // Nested specifics
     travelsDetails: travelsDetailsSchema.optional(),
     hotelDetails: hotelDetailsSchema.optional(),
   })
   .superRefine((data, ctx) => {
-    // Cross-field validations
-    if (data.contractStartDate && data.contractEndDate && data.contractEndDate < data.contractStartDate) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["contractEndDate"],
-        message: "Contract end date cannot be earlier than start date",
-      });
-    }
-
     if (data.type === "travels") {
       if (!data.travelsDetails) {
         ctx.addIssue({

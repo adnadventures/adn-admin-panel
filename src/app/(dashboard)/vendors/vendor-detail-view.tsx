@@ -1,20 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   Building2,
   Bus,
-  Calendar,
   Check,
-  CreditCard,
   Edit,
   ExternalLink,
   Hotel,
+  Image as ImageIcon,
   Mail,
   MapPin,
   Phone,
   Users,
+  X,
 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,6 @@ import {
   BUS_TYPE_LABELS,
   HOTEL_PROPERTY_TYPE_LABELS,
   MEAL_PLAN_LABELS,
-  PAYMENT_TERMS_LABELS,
   PERMIT_TYPE_LABELS,
 } from "@/lib/validators/vendor";
 import type { Vendor } from "@/types/models";
@@ -35,6 +35,11 @@ type Props = {
 };
 
 export function VendorDetailView({ vendor, canManage }: Props) {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const images = vendor.images && vendor.images.length > 0
+    ? vendor.images.map((img) => img.url)
+    : vendor.imageUrls ?? [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -54,6 +59,30 @@ export function VendorDetailView({ vendor, canManage }: Props) {
         )}
       </div>
 
+      {/* Image Preview Modal */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div className="relative max-h-[90vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute -top-10 right-0 rounded-full bg-white/20 p-1.5 text-white hover:bg-white/40"
+            >
+              <X className="size-6" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selectedImage}
+              alt="Vendor Preview"
+              className="max-h-[85vh] w-auto rounded-lg object-contain shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Profile Header Card */}
       <Card className="border-border shadow-xs">
         <CardContent className="p-6">
@@ -72,16 +101,18 @@ export function VendorDetailView({ vendor, canManage }: Props) {
               <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-xs pt-1">
                 <span className="flex items-center gap-1">
                   <MapPin className="size-3.5" />
-                  {vendor.city}, {vendor.state} (Dest: {vendor.destination})
+                  {vendor.state ? `${vendor.state} • ` : ""}Destination: {vendor.destination}
                 </span>
                 <span className="flex items-center gap-1">
                   <Phone className="size-3.5" />
                   {vendor.phone}
                 </span>
-                <span className="flex items-center gap-1">
-                  <Mail className="size-3.5" />
-                  {vendor.email}
-                </span>
+                {vendor.email && (
+                  <span className="flex items-center gap-1">
+                    <Mail className="size-3.5" />
+                    {vendor.email}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -144,27 +175,13 @@ export function VendorDetailView({ vendor, canManage }: Props) {
               )}
               <div>
                 <p className="text-muted-foreground text-xs">Email Address</p>
-                <p className="font-medium">{vendor.email}</p>
+                <p className="font-medium">{vendor.email || "—"}</p>
               </div>
 
               {vendor.type === "travels" && vendor.travelsDetails?.emergencyContact && (
                 <div className="rounded-md bg-destructive/10 p-2 text-destructive text-xs">
                   <span className="font-semibold">24x7 Breakdown Helpline:</span>{" "}
                   {vendor.travelsDetails.emergencyContact}
-                </div>
-              )}
-
-              {vendor.type === "hotel" && vendor.hotelDetails?.frontDeskPhone && (
-                <div>
-                  <p className="text-muted-foreground text-xs">Front Desk Phone</p>
-                  <p className="font-medium">{vendor.hotelDetails.frontDeskPhone}</p>
-                </div>
-              )}
-
-              {vendor.type === "hotel" && vendor.hotelDetails?.reservationEmail && (
-                <div>
-                  <p className="text-muted-foreground text-xs">Reservations Email</p>
-                  <p className="font-medium">{vendor.hotelDetails.reservationEmail}</p>
                 </div>
               )}
             </CardContent>
@@ -174,7 +191,7 @@ export function VendorDetailView({ vendor, canManage }: Props) {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="size-4 text-primary" /> Location & Hub
+                <MapPin className="size-4 text-primary" /> Location & Destination
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -184,23 +201,17 @@ export function VendorDetailView({ vendor, canManage }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <p className="text-muted-foreground text-xs">City / Town</p>
-                  <p className="font-medium">{vendor.city}</p>
-                </div>
-                <div>
                   <p className="text-muted-foreground text-xs">State</p>
-                  <p className="font-medium">{vendor.state}</p>
+                  <p className="font-medium">{vendor.state || "—"}</p>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <p className="text-muted-foreground text-xs">PIN Code</p>
                   <p className="font-medium">{vendor.pincode || "—"}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Destination Mapping</p>
-                  <p className="font-medium">{vendor.destination}</p>
-                </div>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Primary Destination</p>
+                <p className="font-semibold text-primary">{vendor.destination}</p>
               </div>
               {vendor.locationUrl && (
                 <a
@@ -215,59 +226,44 @@ export function VendorDetailView({ vendor, canManage }: Props) {
             </CardContent>
           </Card>
 
-          {/* Business & Bank Details */}
+          {/* Uploaded Images Gallery */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <CreditCard className="size-4 text-primary" /> Tax & Settlement Details
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <ImageIcon className="size-4 text-primary" />
+                  {vendor.type === "travels" ? "Bus Fleet Photos" : "Hotel & Property Photos"}
+                </span>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                  {images.length} {images.length === 1 ? "photo" : "photos"}
+                </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">GSTIN</p>
-                  <p className="font-mono font-medium">{vendor.gstin || "—"}</p>
+            <CardContent>
+              {images.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-6 text-center text-muted-foreground">
+                  <ImageIcon className="size-8 opacity-40 mb-2" />
+                  <p className="text-xs">No images uploaded for this vendor yet.</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">PAN</p>
-                  <p className="font-mono font-medium">{vendor.pan || "—"}</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {images.map((url, i) => (
+                    <button
+                      key={url || i}
+                      type="button"
+                      onClick={() => setSelectedImage(url)}
+                      className="group relative aspect-square overflow-hidden rounded-md border border-border bg-muted/40 hover:opacity-90 transition-opacity"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt={`Vendor image ${i + 1}`}
+                        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      />
+                    </button>
+                  ))}
                 </div>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Bank Name</p>
-                <p className="font-medium">{vendor.bankName || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Account Number</p>
-                <p className="font-mono font-medium">{vendor.accountNumber || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Account Holder Name</p>
-                <p className="font-medium">{vendor.accountHolderName || "—"}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">IFSC Code</p>
-                  <p className="font-mono font-medium">{vendor.ifscCode || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">UPI ID</p>
-                  <p className="font-medium">{vendor.upiId || "—"}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">Payment Terms</p>
-                  <p className="font-medium">
-                    {PAYMENT_TERMS_LABELS[vendor.paymentTerms as keyof typeof PAYMENT_TERMS_LABELS] ||
-                      vendor.paymentTerms}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Currency</p>
-                  <p className="font-medium">{vendor.currency}</p>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -337,18 +333,6 @@ export function VendorDetailView({ vendor, canManage }: Props) {
                                 : "—"}
                             </span>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">Fitness Expiry: </span>
-                            <span className="font-medium">
-                              {bus.fitnessExpiryDate || "—"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Insurance Expiry: </span>
-                            <span className="font-medium">
-                              {bus.insuranceExpiryDate || "—"}
-                            </span>
-                          </div>
                         </div>
 
                         {bus.amenities && bus.amenities.length > 0 && (
@@ -363,6 +347,56 @@ export function VendorDetailView({ vendor, canManage }: Props) {
                             ))}
                           </div>
                         )}
+
+                        {/* Bus Vehicle Photos Gallery */}
+                        {(() => {
+                          const busPhotos: string[] =
+                            bus.images && bus.images.length > 0
+                              ? bus.images.map((i) => i.url)
+                              : bus.imageUrls && bus.imageUrls.length > 0
+                                ? bus.imageUrls
+                                : bus.imageUrl || bus.image?.url
+                                  ? [bus.imageUrl || bus.image!.url]
+                                  : [];
+
+                          if (busPhotos.length === 0) return null;
+
+                          return (
+                            <div className="pt-2.5 border-t border-border/60 space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                  <ImageIcon className="size-3.5 text-primary" />
+                                  Bus Vehicle Photos
+                                </span>
+                                <span className="text-[11px] text-muted-foreground font-medium">
+                                  {busPhotos.length} {busPhotos.length === 1 ? "photo" : "photos"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                {busPhotos.map((url, pIdx) => (
+                                  <button
+                                    key={url || pIdx}
+                                    type="button"
+                                    onClick={() => setSelectedImage(url)}
+                                    className="group relative h-16 w-24 shrink-0 overflow-hidden rounded-md border border-border/80 bg-muted hover:opacity-95"
+                                    title="Click to view full photo"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={url}
+                                      alt={`${bus.registrationNumber} photo ${pIdx + 1}`}
+                                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                      <ImageIcon className="size-4 text-white" />
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </CardContent>
                     </Card>
                   ))
@@ -506,33 +540,6 @@ export function VendorDetailView({ vendor, canManage }: Props) {
               </CardContent>
             </Card>
           )}
-
-          {/* Operational Notes & Contract Dates */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="size-4 text-primary" /> Contract Dates & Operational Terms
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-muted-foreground text-xs">Agreement Start Date</p>
-                  <p className="font-medium">{vendor.contractStartDate || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Agreement End Date</p>
-                  <p className="font-medium">{vendor.contractEndDate || "—"}</p>
-                </div>
-              </div>
-              {vendor.notes && (
-                <div className="rounded-md bg-muted p-3 text-xs space-y-1">
-                  <p className="font-semibold">Internal Notes & Specific Contract Terms</p>
-                  <p className="text-muted-foreground whitespace-pre-wrap">{vendor.notes}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>

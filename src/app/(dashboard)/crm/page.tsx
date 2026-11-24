@@ -1,4 +1,5 @@
-import { listCrmStages, listPipelineLeads } from "@/lib/data/crm";
+import { requireModule } from "@/lib/auth/session";
+import { listCrmEmployees, listCrmStages, listPipelineLeads } from "@/lib/data/crm";
 import { CrmKanbanPipeline } from "./crm-kanban-pipeline";
 
 export const dynamic = "force-dynamic";
@@ -8,11 +9,19 @@ export const metadata = {
 };
 
 export default async function CrmPage() {
-  const [stages, leads] = await Promise.all([
+  await requireModule("crm");
+  const [stages, leads, employees] = await Promise.all([
     listCrmStages(),
     listPipelineLeads(),
+    listCrmEmployees(),
   ]);
 
-  return <CrmKanbanPipeline initialStages={stages} initialLeads={leads} />;
+  return (
+    <CrmKanbanPipeline
+      initialStages={stages}
+      initialLeads={leads}
+      initialEmployees={employees}
+    />
+  );
 }
 

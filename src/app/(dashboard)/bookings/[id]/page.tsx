@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Building2, Bus, Hotel, MapPin, Phone } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModule } from "@/lib/auth/session";
@@ -14,7 +16,7 @@ import { pricePerPerson } from "@/lib/finance/pricing";
 import { formatDate, todayIST } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import type { CurrencyCode } from "@/lib/finance/currency";
-import type { Gender } from "@/types/models";
+import type { BookingVendorSummary, Gender } from "@/types/models";
 import { SlotMeter } from "../slot-meter";
 import { BookingStatusBadge } from "../status-badge";
 import { BookingActions } from "./booking-actions";
@@ -169,6 +171,107 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
       </div>
+
+      {booking.vendors && booking.vendors.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Building2 className="size-4 text-primary" /> Assigned Trip Vendors & Partners
+                </CardTitle>
+                <p className="text-muted-foreground text-xs">
+                  Travels (fleet & buses) and Hotel accommodation partners confirmed for this booking.
+                </p>
+              </div>
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                {booking.vendors.length} {booking.vendors.length === 1 ? "Vendor" : "Vendors"}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {booking.vendors.map((v: BookingVendorSummary) => (
+                <div
+                  key={v.id}
+                  className="rounded-lg border border-border bg-card p-3.5 space-y-2 shadow-2xs hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <Link
+                        href={`/vendors/${v.id}`}
+                        className="font-semibold text-sm hover:underline text-foreground line-clamp-1"
+                      >
+                        {v.name}
+                      </Link>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          v.type === "travels"
+                            ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                            : "bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                        }`}
+                      >
+                        {v.type === "travels" ? (
+                          <>
+                            <Bus className="size-3" /> Travels
+                          </>
+                        ) : (
+                          <>
+                            <Hotel className="size-3" /> Hotel
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="size-3.5 text-primary shrink-0" />
+                      <span className="font-medium text-foreground">{v.destination}</span>
+                    </div>
+                    {v.phone && (
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="size-3.5 shrink-0" />
+                        <span>{v.phone}</span>
+                        {v.contactPerson && (
+                          <span className="truncate">({v.contactPerson})</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {v.imageUrls && v.imageUrls.length > 0 && (
+                    <div className="flex items-center gap-1.5 pt-1">
+                      {v.imageUrls.slice(0, 3).map((img: string, i: number) => (
+                        <div
+                          key={img || i}
+                          className="size-9 shrink-0 overflow-hidden rounded-md border border-border bg-muted/40"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img}
+                            alt={v.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-border/50 text-right">
+                    <Link
+                      href={`/vendors/${v.id}`}
+                      className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      View Vendor Details →
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {(user.role === "admin" || user.role === "manager") && (
         <BookingProfitability

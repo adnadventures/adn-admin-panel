@@ -23,6 +23,7 @@ export const bookingInputSchema = z
     seniorPrice: price,
     repriceExisting: z.boolean(),
     notes: z.string().trim().max(500, "Max 500 characters"),
+    vendorIds: z.array(z.string()).default([]),
   })
   .superRefine((d, ctx) => {
     const bad = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
