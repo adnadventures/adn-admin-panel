@@ -16,6 +16,7 @@ export const COL = {
   stats: "stats",
   auditLogs: "auditLogs",
   targets: "targets",
+<<<<<<< HEAD
   vendors: "vendors",
   crmStages: "crmStages",
   crmLeads: "crmLeads",
@@ -30,6 +31,8 @@ export const COL = {
   crmCampaigns: "crmCampaigns",
   crmCommunications: "crmCommunications",
   crmSettings: "crmSettings",
+=======
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
 } as const;
 
 /* ---------- write metadata ---------- */

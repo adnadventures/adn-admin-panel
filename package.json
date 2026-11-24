@@ -5,6 +5,7 @@
   "engines": {
     "node": ">=22"
   },
+<<<<<<< HEAD
  "scripts": {
   "dev": "next dev --webpack",
   "build": "next build",
@@ -15,6 +16,18 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1151.0",
     "@base-ui/react": "^1.9.0",
+=======
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "emulators": "firebase emulators:start --only firestore"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1151.0",
+    "@base-ui/react": "^1.8.0",
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
     "@hookform/resolvers": "^5.9.1",
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
@@ -24,7 +37,11 @@
     "firebase-admin": "^14.5.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+<<<<<<< HEAD
     "lucide-react": "^1.78.0",
+=======
+    "lucide-react": "^1.52.0",
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
     "next": "16.3.8",
     "next-themes": "^0.4.6",
     "react": "19.2.8",

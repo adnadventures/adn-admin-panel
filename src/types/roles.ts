@@ -8,8 +8,11 @@ export const EMPLOYEE_MODULES = [
   "bookings",
   "packages",
   "customers",
+<<<<<<< HEAD
   "vendors",
   "crm",
+=======
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
   "order-sources",
   "invoices",
   "finance",

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+<<<<<<< HEAD
 import {
   BarChart3,
   Briefcase,
@@ -36,6 +37,12 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/targets": Target,
   "/settings": Settings,
 };
+=======
+import { cn } from "@/lib/utils";
+import type { SessionUser } from "@/types/roles";
+import { canAccessNavItem } from "./nav-items";
+import { NAV_ITEMS } from "./nav-items";
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
 
 export function NavLinks({ user, onNavigate }: { user: SessionUser; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -44,7 +51,10 @@ export function NavLinks({ user, onNavigate }: { user: SessionUser; onNavigate?:
     <nav aria-label="Main navigation" className="flex flex-col gap-1">
       {NAV_ITEMS.filter((item) => canAccessNavItem(user, item)).map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+<<<<<<< HEAD
         const Icon = NAV_ICONS[item.href] ?? LayoutDashboard;
+=======
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
         return (
           <Link
             key={item.href}
@@ -58,7 +68,11 @@ export function NavLinks({ user, onNavigate }: { user: SessionUser; onNavigate?:
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
+<<<<<<< HEAD
             <Icon className={cn("size-[18px] shrink-0", active && "text-primary")} aria-hidden="true" />
+=======
+            <item.icon className={cn("size-[18px] shrink-0", active && "text-primary")} aria-hidden="true" />
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
             {item.label}
           </Link>
         );

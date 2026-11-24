@@ -1,11 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2017",
+<<<<<<< HEAD
     "lib": [
       "dom",
       "dom.iterable",
       "esnext"
     ],
+=======
+    "lib": ["dom", "dom.iterable", "esnext"],
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -23,6 +27,7 @@
       }
     ],
     "paths": {
+<<<<<<< HEAD
       "@/*": [
         "./src/*"
       ],
@@ -32,6 +37,9 @@
       "firebase/auth": [
         "./node_modules/@firebase/auth/dist/auth-public.d.ts"
       ]
+=======
+      "@/*": ["./src/*"]
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
     }
   },
   "include": [
@@ -39,10 +47,17 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
+<<<<<<< HEAD
     "**/*.mts",
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
   ]
+=======
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+>>>>>>> d644832e8d57e8b947621595736c63fc395104ee
 }
