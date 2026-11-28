@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireModule } from "@/lib/auth/session";
 import { canManageAssignedModules } from "@/types/roles";
 import { getInvoice } from "@/lib/data/invoices";
+import { getSettings } from "@/lib/settings";
 import { fromMinor } from "@/lib/finance/currency";
 import { formatDuration } from "@/lib/format";
 import type { InvoiceInput } from "@/lib/validators/invoice";
@@ -16,7 +17,10 @@ export default async function InvoicePage({
 }) {
   const user = await requireModule("invoices");
   const { id } = await params;
-  const invoice = await getInvoice(id);
+  const [invoice, settings] = await Promise.all([
+    getInvoice(id),
+    getSettings(),
+  ]);
   if (!invoice) notFound();
 
   const values: InvoiceInput = {
@@ -70,7 +74,11 @@ export default async function InvoicePage({
       />
       <InvoiceDocument
         values={values}
-        business={{ ...invoice.business, tagline: invoice.business.tagline ?? "" }}
+        business={{
+          ...invoice.business,
+          address: settings.business.address || invoice.business.address || "",
+          tagline: invoice.business.tagline ?? settings.business.tagline ?? "",
+        }}
       />
       {invoice.attachments.length > 0 && (
         <section className="mt-6 rounded-md border p-4 print:hidden">

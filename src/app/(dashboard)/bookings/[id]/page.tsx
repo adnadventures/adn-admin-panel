@@ -121,6 +121,8 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
       <PageHeader
         title={booking.title}
         description={`${booking.bookingNo} · ${booking.packageName} · ${booking.destination}`}
+        backHref="/bookings"
+        backLabel="Back to Bookings"
         actions={canManageBookings ? <BookingActions booking={booking} /> : undefined}
       />
 

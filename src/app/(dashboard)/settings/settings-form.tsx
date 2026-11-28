@@ -1,9 +1,10 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { saveSettings } from "@/actions/settings";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,11 +31,25 @@ export function SettingsForm({ initial }: { initial: AppSettings }) {
 
   const {
     register, control, handleSubmit, reset,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<AppSettings>({
     resolver: zodResolver(settingsSchema),
     defaultValues: initial,
   });
+
+  const isPresetsDirty = presetsText !== initial.gst.presets.join(", ");
+  const hasUnsavedChanges = isDirty || isPresetsDirty;
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   function onSubmit(values: AppSettings) {
     startTransition(async () => {
@@ -46,6 +61,7 @@ export function SettingsForm({ initial }: { initial: AppSettings }) {
       if (res.ok) {
         toast.success("Settings saved");
         reset(payload);
+        setPresetsText(payload.gst.presets.join(", "));
       } else {
         toast.error(res.error);
       }
@@ -53,7 +69,23 @@ export function SettingsForm({ initial }: { initial: AppSettings }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-6">
+    <div className="mb-6 space-y-6">
+      <PageHeader
+        title="Settings"
+        description="Business details, currency conversion and employee access"
+        actions={
+          <Button
+            type="submit"
+            form="settings-form"
+            disabled={pending}
+            className="min-w-[130px] font-medium shadow-sm"
+          >
+            {pending ? "Saving…" : "Save settings"}
+          </Button>
+        }
+      />
+
+      <form id="settings-form" onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-6">
       {/* Business */}
       <Card>
         <CardHeader>
@@ -197,9 +229,7 @@ export function SettingsForm({ initial }: { initial: AppSettings }) {
         </CardContent>
       </Card>
 
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Save settings"}
-      </Button>
-    </form>
+      </form>
+    </div>
   );
 }

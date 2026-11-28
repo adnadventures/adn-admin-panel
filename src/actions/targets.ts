@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase/admin";
+import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { requireUser } from "@/lib/auth/session";
 import { toMinor } from "@/lib/finance/currency";
 import { getTargetDateRange } from "@/lib/targets-period";
@@ -12,6 +12,34 @@ import type { Target } from "@/types/models";
 
 type Result = { ok: true; id: string } | { ok: false; error: string };
 const MANAGEMENT_ROLES = ["admin", "manager"] as const;
+
+export type TargetEmployeeOption = {
+  uid: string;
+  name: string;
+  email: string;
+};
+
+export async function listEmployeesForTarget(): Promise<TargetEmployeeOption[]> {
+  await requireTargetManager();
+  const employees: TargetEmployeeOption[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const page = await adminAuth.listUsers(1000, pageToken);
+    for (const user of page.users) {
+      if (user.customClaims?.role !== "employee") continue;
+      if (user.disabled) continue;
+      employees.push({
+        uid: user.uid,
+        name: user.displayName?.trim() || user.email?.split("@")[0] || "Employee",
+        email: user.email ?? "",
+      });
+    }
+    pageToken = page.pageToken;
+  } while (pageToken);
+
+  return employees.sort((a, b) => a.name.localeCompare(b.name));
+}
 
 async function requireTargetManager() {
   return requireUser([...MANAGEMENT_ROLES]);
@@ -27,6 +55,27 @@ export async function createTarget(input: unknown): Promise<Result> {
   const parsed = targetInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const data = parsed.data;
+
+  let targetUser;
+  try {
+    targetUser = await adminAuth.getUser(data.employeeId);
+  } catch {
+    return { ok: false, error: "Selected user account was not found" };
+  }
+  const role = targetUser.customClaims?.role;
+  const isAdmin = role === "admin" || targetUser.uid === user.uid;
+  const isEmployee = role === "employee";
+
+  if (!isAdmin && !isEmployee) {
+    return { ok: false, error: "Selected user must be an Admin or Employee" };
+  }
+  if (targetUser.disabled) {
+    return { ok: false, error: "Selected account is disabled" };
+  }
+  const assignedName = targetUser.displayName?.trim() || targetUser.email?.split("@")[0] || (isAdmin ? user.name : "Employee");
+  const assignedEmail = targetUser.email ?? "";
+  const assignmentType: "admin" | "employee" = isAdmin ? "admin" : "employee";
+
   const range = getTargetDateRange(data.period, data.periodDate, data.customEndDate);
   if (!range) return { ok: false, error: "Choose a valid target date range" };
   const targetValue = data.metric === "revenue" || data.metric === "profit"
@@ -47,6 +96,10 @@ export async function createTarget(input: unknown): Promise<Result> {
     endDate: range.endDate,
     description: data.description,
     status: "active",
+    employeeId: targetUser.uid,
+    employeeName: assignedName,
+    employeeEmail: assignedEmail,
+    assignmentType,
   };
   const batch = adminDb.batch();
   batch.set(ref, { ...target, ...createMeta(user) });
@@ -58,6 +111,9 @@ export async function createTarget(input: unknown): Promise<Result> {
       period: target.period,
       startDate: target.startDate,
       endDate: target.endDate,
+      employeeId: target.employeeId,
+      employeeName: target.employeeName,
+      assignmentType: target.assignmentType,
     }),
   );
   await batch.commit();
@@ -70,6 +126,27 @@ export async function updateTarget(id: string, input: unknown): Promise<Result> 
   const parsed = targetInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const data = parsed.data;
+
+  let targetUser;
+  try {
+    targetUser = await adminAuth.getUser(data.employeeId);
+  } catch {
+    return { ok: false, error: "Selected user account was not found" };
+  }
+  const role = targetUser.customClaims?.role;
+  const isAdmin = role === "admin" || targetUser.uid === user.uid;
+  const isEmployee = role === "employee";
+
+  if (!isAdmin && !isEmployee) {
+    return { ok: false, error: "Selected user must be an Admin or Employee" };
+  }
+  if (targetUser.disabled) {
+    return { ok: false, error: "Selected account is disabled" };
+  }
+  const assignedName = targetUser.displayName?.trim() || targetUser.email?.split("@")[0] || (isAdmin ? user.name : "Employee");
+  const assignedEmail = targetUser.email ?? "";
+  const assignmentType: "admin" | "employee" = isAdmin ? "admin" : "employee";
+
   const range = getTargetDateRange(data.period, data.periodDate, data.customEndDate);
   if (!range) return { ok: false, error: "Choose a valid target date range" };
   const targetValue = data.metric === "revenue" || data.metric === "profit"
@@ -90,7 +167,8 @@ export async function updateTarget(id: string, input: unknown): Promise<Result> 
     || previous.currency !== data.currency
     || previous.period !== data.period
     || previous.startDate !== range.startDate
-    || previous.endDate !== range.endDate;
+    || previous.endDate !== range.endDate
+    || previous.employeeId !== targetUser.uid;
   const update: Record<string, unknown> = {
     name: data.name,
     metric: data.metric,
@@ -100,6 +178,10 @@ export async function updateTarget(id: string, input: unknown): Promise<Result> 
     startDate: range.startDate,
     endDate: range.endDate,
     description: data.description,
+    employeeId: targetUser.uid,
+    employeeName: assignedName,
+    employeeEmail: assignedEmail,
+    assignmentType,
     ...(completionChanged
       ? { completedAt: FieldValue.delete(), completionNotifiedAt: FieldValue.delete() }
       : {}),
@@ -115,12 +197,16 @@ export async function updateTarget(id: string, input: unknown): Promise<Result> 
         targetValue: previous.targetValue,
         startDate: previous.startDate,
         endDate: previous.endDate,
+        employeeId: previous.employeeId,
       },
       after: {
         metric: data.metric,
         targetValue,
         startDate: range.startDate,
         endDate: range.endDate,
+        employeeId: targetUser.uid,
+        employeeName: assignedName,
+        assignmentType,
       },
     }),
   );

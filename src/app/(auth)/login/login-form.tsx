@@ -12,8 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { clientAuth } from "@/lib/firebase/client";
 
+import { resolveLoginEmail } from "@/actions/auth";
+
 const schema = z.object({
-  email: z.string().email("Enter a valid email"),
+  identifier: z.string().min(1, "Enter username or email"),
   password: z.string().min(6, "Minimum 6 characters"),
 });
 type Values = z.infer<typeof schema>;
@@ -31,7 +33,16 @@ export function LoginForm() {
   async function onSubmit(values: Values) {
     setLoading(true);
     try {
-      const cred = await signInWithEmailAndPassword(clientAuth, values.email, values.password);
+      // 1. Resolve identifier (username or email) to valid Firebase Auth email
+      const resolved = await resolveLoginEmail(values.identifier);
+      if (!resolved.ok) {
+        toast.error(resolved.error);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Sign in with resolved email and password
+      const cred = await signInWithEmailAndPassword(clientAuth, resolved.email, values.password);
       const idToken = await cred.user.getIdToken();
 
       const res = await fetch("/api/auth/session", {
@@ -51,7 +62,7 @@ export function LoginForm() {
       router.replace("/");
       router.refresh();
     } catch {
-      toast.error("Invalid email or password");
+      toast.error("Invalid username/email or password");
     } finally {
       setLoading(false);
     }
@@ -65,9 +76,18 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" autoComplete="email" {...register("email")} />
-        {errors.email && <p className="text-destructive text-xs">{errors.email.message}</p>}
+        <Label htmlFor="identifier">Username or Email</Label>
+        <Input
+          id="identifier"
+          type="text"
+          placeholder="Enter username or email"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck="false"
+          {...register("identifier")}
+        />
+        {errors.identifier && <p className="text-destructive text-xs">{errors.identifier.message}</p>}
       </div>
 
       <div className="space-y-2">

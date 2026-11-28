@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/shared/page-header";
 import { requireModuleEditor } from "@/lib/auth/session";
 import { listActivePackages } from "@/lib/data/packages";
 import { listVendors } from "@/lib/data/vendors";
@@ -13,9 +12,16 @@ export default async function NewBookingPage() {
   ]);
 
   return (
-    <>
-      <PageHeader title="New booking" description="Set up the trip. You add members on the next screen." />
-      <BookingForm packages={packages} booking={null} defaultCloseDate={todayIST()} vendors={vendors} />
-    </>
+    <BookingForm
+      packages={packages}
+      booking={null}
+      defaultCloseDate={todayIST()}
+      vendors={vendors}
+      showPageHeader
+      headerTitle="New booking"
+      headerDescription="Set up the trip. You add members on the next screen."
+      backHref="/bookings"
+      backLabel="Back to Bookings"
+    />
   );
 }

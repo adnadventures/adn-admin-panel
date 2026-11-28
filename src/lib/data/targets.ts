@@ -36,21 +36,21 @@ async function queryRange(group: RangeGroup) {
     ? adminDb.collection(COL.bookings)
       .where("travelStart", ">=", group.startDate)
       .where("travelStart", "<=", group.endDate)
-      .select("isDeleted", "status", "memberCount", "totalAmount", "currency", "packageId")
+      .select("isDeleted", "status", "memberCount", "totalAmount", "currency", "packageId", "createdBy")
       .get()
     : Promise.resolve(null);
   const createdBookingsPromise = needsCreatedBookings
     ? adminDb.collection(COL.bookings)
       .where("createdAt", ">=", istTimestamp(group.startDate, false))
       .where("createdAt", "<=", istTimestamp(group.endDate, true))
-      .select("isDeleted", "status")
+      .select("isDeleted", "status", "createdBy")
       .get()
     : Promise.resolve(null);
   const customerPromise = hasMetric(group.targets, "customers")
     ? adminDb.collection(COL.customers)
       .where("createdAt", ">=", istTimestamp(group.startDate, false))
       .where("createdAt", "<=", istTimestamp(group.endDate, true))
-      .select("isDeleted")
+      .select("isDeleted", "createdBy")
       .get()
     : Promise.resolve(null);
   const companyExpensesPromise = hasMetric(group.targets, "profit")
@@ -71,7 +71,7 @@ async function queryRange(group: RangeGroup) {
     .map((doc) => serializeDoc<Booking>(doc))
     .filter((booking) => booking.isDeleted === false && booking.status !== "cancelled");
   const createdBookings = (createdBookingsSnapshot?.docs ?? [])
-    .map((doc) => serializeDoc<Pick<Booking, "id" | "isDeleted" | "status">>(doc))
+    .map((doc) => serializeDoc<Pick<Booking, "id" | "isDeleted" | "status" | "createdBy">>(doc))
     .filter((booking) => booking.isDeleted === false && booking.status !== "cancelled");
   const bookingExpenses = new Map<string, FinanceExpense[]>();
 
@@ -124,6 +124,13 @@ async function queryRange(group: RangeGroup) {
     .filter((doc) => doc.data().isDeleted === false && doc.data().type === "expense" && !doc.data().bookingId)
     .map((doc) => serializeDoc<FinanceExpense>(doc));
   const customerCount = customersSnapshot?.docs.filter((doc) => doc.data().isDeleted === false).length ?? null;
+  const customersByCreator = new Map<string, number>();
+  for (const doc of customersSnapshot?.docs ?? []) {
+    if (doc.data().isDeleted === false) {
+      const creator = (doc.data().createdBy as string) || "";
+      customersByCreator.set(creator, (customersByCreator.get(creator) ?? 0) + 1);
+    }
+  }
 
   return {
     bookings,
@@ -133,19 +140,21 @@ async function queryRange(group: RangeGroup) {
     settings,
     companyExpenses,
     customerCount,
+    customersByCreator,
   };
 }
 
 function calculateProfit(
   target: Target,
   data: Awaited<ReturnType<typeof queryRange>>,
+  bookings: Booking[] = data.bookings,
 ): number | null {
   const currency = target.currency!;
   const settings = data.settings;
   if (!settings) return null;
 
   let profit = 0;
-  for (const booking of data.bookings) {
+  for (const booking of bookings) {
     if (booking.currency !== currency) continue;
     const pkg = data.packagesById.get(booking.packageId);
     const packageCost = pkg?.isDeleted || !pkg?.cost
@@ -162,28 +171,45 @@ function calculateProfit(
     profit += booking.totalAmount - packageCost * booking.memberCount - bookingExpenseTotal;
   }
 
-  for (const expense of data.companyExpenses) {
-    if (expense.money.currency === currency) profit -= expense.money.amount;
+  if (target.assignmentType !== "employee" && (!target.employeeId || target.assignmentType === "admin")) {
+    for (const expense of data.companyExpenses) {
+      if (expense.money.currency === currency) profit -= expense.money.amount;
+    }
   }
   return profit;
 }
 
 function actualFor(target: Target, data: Awaited<ReturnType<typeof queryRange>>) {
+  const hasAssignee = Boolean(target.employeeId);
+  const assigneeId = target.employeeId;
+
+  const relevantBookings = hasAssignee
+    ? data.bookings.filter((b) => b.createdBy === assigneeId)
+    : data.bookings;
+
+  const relevantCreatedBookings = hasAssignee
+    ? data.createdBookings.filter((b) => b.createdBy === assigneeId)
+    : data.createdBookings;
+
+  const relevantCustomerCount = hasAssignee
+    ? (data.customersByCreator.get(assigneeId!) ?? 0)
+    : data.customerCount;
+
   switch (target.metric) {
     case "bookings":
-      return data.createdBookings.length;
+      return relevantCreatedBookings.length;
     case "completed_bookings":
-      return data.createdBookings.filter((booking) => booking.status === "completed").length;
+      return relevantCreatedBookings.filter((booking) => booking.status === "completed").length;
     case "revenue":
-      return data.bookings
+      return relevantBookings
         .filter((booking) => booking.currency === target.currency)
         .reduce((total, booking) => total + booking.totalAmount, 0);
     case "profit":
-      return calculateProfit(target, data);
+      return calculateProfit(target, data, relevantBookings);
     case "customers":
-      return data.customerCount;
+      return relevantCustomerCount;
     case "travelers":
-      return data.bookings.reduce((total, booking) => total + booking.memberCount, 0);
+      return relevantBookings.reduce((total, booking) => total + booking.memberCount, 0);
   }
 }
 
@@ -245,10 +271,15 @@ async function clearCompletion(target: Target) {
   });
 }
 
-export async function listTargetsWithProgress(): Promise<TargetProgress[]> {
-  const snapshot = await adminDb.collection(COL.targets)
-    .where("isDeleted", "==", false)
-    .get();
+export async function listTargetsWithProgress(options?: {
+  employeeId?: string;
+}): Promise<TargetProgress[]> {
+  let query: FirebaseFirestore.Query = adminDb.collection(COL.targets)
+    .where("isDeleted", "==", false);
+  if (options?.employeeId) {
+    query = query.where("employeeId", "==", options.employeeId);
+  }
+  const snapshot = await query.get();
   const targets = snapshot.docs
     .map((doc) => serializeDoc<Target>(doc))
     .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.name.localeCompare(b.name));

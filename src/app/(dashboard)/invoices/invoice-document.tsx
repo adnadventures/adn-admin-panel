@@ -53,7 +53,7 @@ export function InvoiceDocument({
               priority
             />
           </div>
-          <div className="min-w-0 break-words">
+          <div className="min-w-0 flex-1 break-words">
             <p className="text-xl font-bold tracking-wide uppercase sm:text-2xl">
               {business.name || "ADN ADVENTURES"}
             </p>
@@ -68,17 +68,14 @@ export function InvoiceDocument({
             <p className="text-sm text-slate-600">
               MSME Registration No: UDAYAM-PY-03-0062646
             </p>
-            <p className="text-xs text-slate-600">
-              Inside Techgajana Campus, Thiruvalluvar Street, Near MGR Statue, Villianur, Puducherry - 605110
-            </p>
             {business.gstin && (
-              <p className="mt-1 text-xs">GSTIN: {business.gstin}</p>
+              <p className="text-xs text-slate-600">GSTIN: {business.gstin}</p>
             )}
-            {business.address && (
-              <p className="mt-1 text-xs whitespace-pre-line">
-                {business.address}
+            {business.address?.trim() ? (
+              <p className="mt-1 text-xs text-slate-600 whitespace-pre-line break-words leading-relaxed">
+                {business.address.trim()}
               </p>
-            )}
+            ) : null}
           </div>
         </header>
 

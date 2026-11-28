@@ -298,6 +298,10 @@ export type Target = Meta & {
   status: TargetRecordStatus;
   completedAt?: ISO | null;
   completionNotifiedAt?: ISO | null;
+  employeeId?: string | null;
+  employeeName?: string | null;
+  employeeEmail?: string | null;
+  assignmentType?: "admin" | "employee";
 };
 
 export type TargetProgress = Target & {

@@ -151,7 +151,14 @@ function EmployeeRow({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-medium">{employee.name || "Employee"}</p>
-          <p className="break-all text-sm text-muted-foreground">{employee.email}</p>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span className="break-all">{employee.email}</span>
+            {employee.username && (
+              <span className="text-xs bg-muted px-1.5 py-0.5 rounded text-foreground font-mono">
+                @{employee.username}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor={`enabled-${employee.uid}`} className="text-sm">

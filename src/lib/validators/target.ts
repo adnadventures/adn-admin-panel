@@ -26,6 +26,8 @@ export const targetInputSchema = z.object({
   periodDate: date,
   customEndDate: date.optional(),
   description: z.string().trim().max(500, "Max 500 characters").default(""),
+  employeeId: z.string().trim().min(1, "Select who this target is assigned to"),
+  assignmentType: z.enum(["admin", "employee"]).optional(),
 }).superRefine((target, ctx) => {
   const isFinancial = target.metric === "revenue" || target.metric === "profit";
   if (isFinancial && !target.currency) {

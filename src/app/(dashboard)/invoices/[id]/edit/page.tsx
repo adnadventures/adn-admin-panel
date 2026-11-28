@@ -54,7 +54,11 @@ export default async function EditInvoicePage({
       <PageHeader title={`Edit ${invoice.invoiceNo}`} description="Update invoice details and documents." />
       <InvoiceForm
         bookings={options}
-        business={{ ...invoice.business, tagline: invoice.business.tagline ?? "" }}
+        business={{
+          ...invoice.business,
+          address: settings.business.address || invoice.business.address || "",
+          tagline: invoice.business.tagline ?? settings.business.tagline ?? "",
+        }}
         defaultTax={settings.gst}
         fxRates={settings.fx.rates}
         suggestedInvoiceNo={invoice.invoiceNo}

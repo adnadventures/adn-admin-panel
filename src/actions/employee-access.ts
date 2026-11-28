@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { adminAuth } from "@/lib/firebase/admin";
+import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { requireUser } from "@/lib/auth/session";
 import {
   EMPLOYEE_ACCESS_MODES,
@@ -23,6 +23,14 @@ const employeePasswordSchema = z.string().min(8, "Password must be at least 8 ch
 const employeeSchema = z.object({
   name: z.string().trim().min(1, "Enter the employee's name").max(100),
   email: z.string().trim().email("Enter a valid email").transform((email) => email.toLowerCase()),
+  username: z
+    .string()
+    .trim()
+    .min(2, "Username must be at least 2 characters")
+    .max(50)
+    .regex(/^[a-zA-Z0-9._-]+$/, "Username can only contain letters, numbers, dots, hyphens and underscores")
+    .transform((u) => u.toLowerCase())
+    .optional(),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
   modules: modulesSchema,
   accessMode: accessModeSchema,
@@ -32,6 +40,7 @@ export type EmployeeAccount = {
   uid: string;
   name: string;
   email: string;
+  username?: string;
   modules: ModuleKey[];
   accessMode: EmployeeAccessMode;
   disabled: boolean;
@@ -49,6 +58,26 @@ function errorCode(error: unknown) {
   return undefined;
 }
 
+function generateSecureTemporaryPassword(): string {
+  const letters = "abcdefghjkmnpqrstuvwxyz";
+  const uppers = "ABCDEFGHJKMNPQRSTUVWXYZ";
+  const numbers = "23456789";
+  const symbols = "!@#$%&*";
+  const all = letters + uppers + numbers + symbols;
+
+  let pwd = "";
+  pwd += letters[Math.floor(Math.random() * letters.length)];
+  pwd += uppers[Math.floor(Math.random() * uppers.length)];
+  pwd += numbers[Math.floor(Math.random() * numbers.length)];
+  pwd += symbols[Math.floor(Math.random() * symbols.length)];
+
+  for (let i = 4; i < 12; i++) {
+    pwd += all[Math.floor(Math.random() * all.length)];
+  }
+
+  return pwd.split("").sort(() => Math.random() - 0.5).join("");
+}
+
 export async function listEmployeeAccounts(): Promise<EmployeeAccount[]> {
   await requireUser(["admin"]);
   const employees: EmployeeAccount[] = [];
@@ -61,10 +90,15 @@ export async function listEmployeeAccounts(): Promise<EmployeeAccount[]> {
       const modules = Array.isArray(user.customClaims.modules)
         ? user.customClaims.modules.filter(isModuleKey)
         : [];
+      const username =
+        (user.customClaims?.username as string | undefined) ||
+        (user.email ? user.email.split("@")[0].toLowerCase() : "");
+
       employees.push({
         uid: user.uid,
         name: user.displayName ?? "",
         email: user.email ?? "",
+        username,
         modules,
         accessMode: user.customClaims.accessMode === "editor" ? "editor" : "viewer",
         disabled: user.disabled,
@@ -80,6 +114,22 @@ export async function createEmployee(input: unknown): Promise<CreateEmployeeResu
   await requireUser(["admin"]);
   const parsed = employeeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  const finalUsername =
+    parsed.data.username || parsed.data.email.split("@")[0].toLowerCase();
+
+  // Check if username is taken in usernames collection
+  try {
+    const existingUsernameDoc = await adminDb.collection("usernames").doc(finalUsername).get();
+    if (existingUsernameDoc.exists) {
+      const data = existingUsernameDoc.data();
+      if (data?.email && data.email !== parsed.data.email) {
+        return { ok: false, error: `The username "${finalUsername}" is already taken` };
+      }
+    }
+  } catch (err) {
+    console.error("Error checking username uniqueness:", err);
+  }
 
   let created: Awaited<ReturnType<typeof adminAuth.createUser>>;
   try {
@@ -100,6 +150,16 @@ export async function createEmployee(input: unknown): Promise<CreateEmployeeResu
       role: "employee",
       modules: parsed.data.modules,
       accessMode: parsed.data.accessMode,
+      username: finalUsername,
+    });
+
+    // Register in usernames collection for instant login resolution
+    await adminDb.collection("usernames").doc(finalUsername).set({
+      uid: created.uid,
+      email: parsed.data.email,
+      username: finalUsername,
+      displayName: parsed.data.name,
+      createdAt: new Date().toISOString(),
     });
   } catch (error) {
     try {
@@ -119,6 +179,7 @@ export async function createEmployee(input: unknown): Promise<CreateEmployeeResu
       uid: created.uid,
       name: created.displayName ?? parsed.data.name,
       email: created.email ?? parsed.data.email,
+      username: finalUsername,
       modules: parsed.data.modules,
       accessMode: parsed.data.accessMode,
       disabled: false,

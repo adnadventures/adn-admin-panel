@@ -296,7 +296,7 @@ export const quickLeadSchema = z.object({
   company: z.string().trim().max(100).optional().default(""),
   expectedRevenue: z.coerce.number().min(0).default(0),
   assignedTo: z.string().trim().optional().default(""),
-  assignedToName: z.string().trim().optional().default("Admin"),
+  assignedToName: z.string().trim().optional().default(""),
   priority: z.coerce.number().min(0).max(3).default(0),
   phone: z.string().trim().max(25).optional().default(""),
   email: z.string().trim().email("Invalid email").or(z.literal("")).optional().default(""),
@@ -322,7 +322,7 @@ export const scheduleLeadActivitySchema = z.object({
   dueDate: z.string().min(1, "Due date is required"),
   dueTime: z.string().optional().default(""),
   assignedTo: z.string().optional().default(""),
-  assignedToName: z.string().optional().default("Admin"),
+  assignedToName: z.string().optional().default(""),
   notes: z.string().trim().max(2000).optional().default(""),
 });
 export type ScheduleLeadActivityInput = z.input<typeof scheduleLeadActivitySchema>;
@@ -339,7 +339,7 @@ export const leadDetailUpdateSchema = z.object({
   priority: z.coerce.number().min(0).max(3).default(0),
   tags: z.array(z.string().trim()).optional().default([]),
   assignedTo: z.string().optional().default(""),
-  assignedToName: z.string().optional().default("Admin"),
+  assignedToName: z.string().optional().default(""),
   salesTeam: z.string().optional().default("Sales"),
   leadSource: z.string().optional().default("Website"),
   notes: z.string().max(5000).optional().default(""),

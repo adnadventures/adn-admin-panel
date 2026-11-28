@@ -30,6 +30,21 @@ export async function listPackages(): Promise<TravelPackage[]> {
   return snap.docs.map(read).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/**
+ * Lightweight projection used only for dashboard cost aggregation.
+ * Only fetches id and cost — avoids large image/itinerary fields.
+ */
+export async function listPackagesForDashboard(): Promise<Pick<TravelPackage, "id" | "cost">[]> {
+  const snap = await adminDb.collection(COL.packages)
+    .where("isDeleted", "==", false)
+    .select("cost")
+    .get();
+  return snap.docs.map((d) => ({
+    id: d.id,
+    cost: d.data().cost as TravelPackage["cost"],
+  }));
+}
+
 /** For the booking form in the next phase */
 export async function listActivePackages(): Promise<TravelPackage[]> {
   const snap = await adminDb

@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600&family=DM+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -152,4 +153,27 @@
     animation: none;
     opacity: 0;
   }
+}
+
+/* Package Builder Brochure styles */
+.brochure-serif {
+  font-family: "Playfair Display", Georgia, serif;
+}
+.brochure-body {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.brochure-page {
+  width: 1122.52px;
+  height: 793.7px;
+  background: #ffffff;
+  position: relative;
+  overflow: hidden;
+  color: #1a1a1a;
+}
+
+.brochure-scale-wrap {
+  width: 1122.52px;
+  height: 793.7px;
+  transform-origin: top left;
 }

@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "cn";
-import type { CrmLead, CrmStage } from "@/types/crm";
+import type { CrmLead, CrmStage, CrmActivity } from "@/types/crm";
 import type { CrmEmployee } from "@/lib/data/crm";
 import {
   Select,
@@ -77,6 +77,27 @@ interface CrmKanbanPipelineProps {
   initialStages: CrmStage[];
   initialLeads: CrmLead[];
   initialEmployees?: CrmEmployee[];
+  initialActivities?: CrmActivity[];
+}
+
+function getNormalizedDateStr(dateStr?: string): string {
+  if (!dateStr) return "";
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+    }
+  } catch {}
+  return trimmed.slice(0, 10);
 }
 
 interface FilterState {
@@ -107,16 +128,20 @@ const initialFilters: FilterState = {
 
 export function parseLeadRevenue(val: unknown): number {
   if (val === undefined || val === null) return 0;
+  let parsed = 0;
   if (typeof val === "number") {
-    return isNaN(val) || !isFinite(val) ? 0 : Math.max(0, val);
-  }
-  if (typeof val === "string") {
+    parsed = isNaN(val) || !isFinite(val) ? 0 : Math.max(0, val);
+  } else if (typeof val === "string") {
     const cleaned = val.replace(/[^0-9.-]/g, "").trim();
     if (!cleaned) return 0;
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) || !isFinite(parsed) ? 0 : Math.max(0, parsed);
+    const n = parseFloat(cleaned);
+    parsed = isNaN(n) || !isFinite(n) ? 0 : Math.max(0, n);
   }
-  return 0;
+  // Prevent astronomical or corrupt overflow values (e.g. ₹10,00,00,00,00,00,00,00,000)
+  if (parsed > 100_000_000) {
+    return 10_000;
+  }
+  return parsed;
 }
 
 export function formatINR(val?: unknown): string {
@@ -163,12 +188,15 @@ export function CrmKanbanPipeline({
   initialStages,
   initialLeads,
   initialEmployees = [],
+  initialActivities = [],
 }: CrmKanbanPipelineProps) {
   const router = useRouter();
   const [stages, setStages] = React.useState<CrmStage[]>(initialStages);
   const [leads, setLeads] = React.useState<CrmLead[]>(initialLeads);
   const [employees] = React.useState<CrmEmployee[]>(initialEmployees);
+  const [activities] = React.useState<CrmActivity[]>(initialActivities);
   const [selectedEmployee, setSelectedEmployee] = React.useState<string>("all");
+  const [selectedMeetingDate, setSelectedMeetingDate] = React.useState<string>("");
 
   // View Mode: default is "kanban"
   const [viewMode, setViewMode] = React.useState<"kanban" | "table">("kanban");
@@ -265,12 +293,69 @@ export function CrmKanbanPipeline({
     return "Name unavailable";
   }, [selectedEmployee, selectedEmployeeObj]);
 
-  // Filtered leads applying search + filters
+  // Map of Lead ID -> matching CrmActivity[] for selectedMeetingDate
+  const leadActivitiesOnSelectedDate = React.useMemo(() => {
+    const map = new Map<string, CrmActivity[]>();
+    if (!selectedMeetingDate) return map;
+
+    const normFilter = selectedMeetingDate.trim();
+
+    activities.forEach((act) => {
+      if (act.isDeleted) return;
+      const actDate = getNormalizedDateStr(act.dueDate);
+      if (actDate === normFilter && act.relatedToId) {
+        const existing = map.get(act.relatedToId) || [];
+        existing.push(act);
+        map.set(act.relatedToId, existing);
+      }
+    });
+
+    // Also check direct lead.activityDate in case activities list didn't capture or for backward-compatibility
+    leads.forEach((lead) => {
+      if (lead.activityDate) {
+        const leadActDate = getNormalizedDateStr(lead.activityDate);
+        if (leadActDate === normFilter && !map.has(lead.id)) {
+          map.set(lead.id, [
+            {
+              id: `fallback-${lead.id}`,
+              type: "meeting",
+              subject: "Scheduled Meeting",
+              dueDate: lead.activityDate,
+              status: "planned",
+              priority: "medium",
+              relatedToType: "lead",
+              relatedToId: lead.id,
+              relatedToName: lead.name || "",
+              assignedTo: lead.assignedTo || "",
+              assignedToName: lead.assignedToName || "Admin",
+              notes: "",
+              createdBy: lead.createdBy || "system",
+              updatedBy: lead.updatedBy || "system",
+              createdAt: lead.createdAt || new Date().toISOString(),
+              updatedAt: lead.updatedAt || new Date().toISOString(),
+              isDeleted: false,
+            },
+          ]);
+        }
+      }
+    });
+
+    return map;
+  }, [activities, leads, selectedMeetingDate]);
+
+  // Filtered leads applying search + filters + employee + meeting date filter
   const filteredLeads = React.useMemo(() => {
     return leads.filter((lead) => {
-      // 0. Employee Filter: Creator-wise (lead.createdBy === selectedEmployee UID)
+      // 0. Employee Filter: Creator or Assigned (lead.createdBy === selectedEmployee || lead.assignedTo === selectedEmployee)
       if (selectedEmployee !== "all") {
-        if (lead.createdBy !== selectedEmployee) {
+        if (lead.createdBy !== selectedEmployee && lead.assignedTo !== selectedEmployee) {
+          return false;
+        }
+      }
+
+      // 0.1 Date Filter for Upcoming Meetings / Activities
+      if (selectedMeetingDate) {
+        if (!leadActivitiesOnSelectedDate.has(lead.id)) {
           return false;
         }
       }
@@ -358,7 +443,7 @@ export function CrmKanbanPipeline({
 
       return true;
     });
-  }, [leads, searchQuery, filters, selectedEmployee]);
+  }, [leads, searchQuery, filters, selectedEmployee, selectedMeetingDate, leadActivitiesOnSelectedDate]);
 
   // Overall pipeline revenue for filtered leads (sum of valid lead amounts across all stages)
   const totalPipelineRevenue = React.useMemo(() => {
@@ -597,8 +682,9 @@ export function CrmKanbanPipeline({
         setQuickLeadOpen(false);
         toast.success("Lead created successfully");
       }
-    } catch {
-      toast.error("An error occurred creating lead");
+    } catch (err: unknown) {
+      console.error("[CRM] Quick Create Lead submit error:", err);
+      toast.error(err instanceof Error ? err.message : "An error occurred creating lead");
     } finally {
       setIsSubmittingLead(false);
     }
@@ -708,174 +794,229 @@ export function CrmKanbanPipeline({
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] w-full overflow-hidden select-none">
       {/* TOP HEADER / CONTROL BAR */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3 shrink-0 border-b border-border/40">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            Pipeline
-          </h1>
+      <div className="flex flex-col gap-2.5 px-1 pb-3 shrink-0 border-b border-border/40">
+        {/* FIRST ROW: Pipeline title, Lead count, Total Revenue, View toggle, Filter, Employee Filter, Date Filter, New button */}
+        <div className="flex items-center justify-between gap-3 overflow-x-auto no-scrollbar py-0.5">
+          {/* Left group */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* 1. Pipeline Title */}
+            <h1 className="text-xl font-bold tracking-tight text-foreground shrink-0">
+              Pipeline
+            </h1>
 
-          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground border border-border/50">
-            {filteredLeads.length} {filteredLeads.length === 1 ? "Lead" : "Leads"}
-          </span>
+            {/* 2. Lead Count */}
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground border border-border/50 shrink-0">
+              {filteredLeads.length} {filteredLeads.length === 1 ? "Lead" : "Leads"}
+            </span>
 
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20">
-            Total {formatINR(totalPipelineRevenue)}
-          </span>
+            {/* 3. Total Revenue */}
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20 shrink-0">
+              Total {formatINR(totalPipelineRevenue)}
+            </span>
 
-          {/* View Switcher: Kanban vs Table */}
-          <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60">
-            <button
-              type="button"
-              onClick={() => setViewMode("kanban")}
-              title="Kanban View"
-              className={cn(
-                "p-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
-                viewMode === "kanban"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline text-[11px]">Kanban</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("table")}
-              title="Table / List View"
-              className={cn(
-                "p-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
-                viewMode === "table"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <List className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline text-[11px]">Table</span>
-            </button>
-          </div>
-
-          {/* Filter Toggle Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-            className={cn(
-              "h-8 gap-1.5 text-xs font-medium border-border/60",
-              (activeFilterCount > 0 || isFilterPanelOpen) &&
-                "border-primary text-primary bg-primary/5 font-semibold"
-            )}
-          >
-            <Filter className="h-3.5 w-3.5" />
-            <span>Filter</span>
-            {activeFilterCount > 0 && (
-              <span className="h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                {activeFilterCount}
+            {/* Active Meeting Date badge if filter selected */}
+            {selectedMeetingDate && (
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5 shrink-0">
+                <Calendar className="h-3 w-3" />
+                <span>Meetings on {selectedMeetingDate}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMeetingDate("")}
+                  className="hover:text-amber-700 dark:hover:text-amber-300 ml-0.5"
+                  title="Clear date filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </span>
             )}
-          </Button>
+
+            {/* 4. Kanban / Table View Toggle */}
+            <div className="flex items-center p-0.5 rounded-lg bg-muted/60 border border-border/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode("kanban")}
+                title="Kanban View"
+                className={cn(
+                  "p-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
+                  viewMode === "kanban"
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline text-[11px]">Kanban</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                title="Table / List View"
+                className={cn(
+                  "p-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5",
+                  viewMode === "table"
+                    ? "bg-background text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <List className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline text-[11px]">Table</span>
+              </button>
+            </div>
+
+            {/* 5. Filter Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+              className={cn(
+                "h-8 gap-1.5 text-xs font-medium border-border/60 shrink-0",
+                (activeFilterCount > 0 || isFilterPanelOpen) &&
+                  "border-primary text-primary bg-primary/5 font-semibold"
+              )}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              <span>Filter</span>
+              {activeFilterCount > 0 && (
+                <span className="h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {/* Right group in First Row: 6. Employee Filter, 7. Date Filter, 8. New Button */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 6. Employee Filter Dropdown */}
+            <div className="w-36 sm:w-44 shrink-0">
+              <Select
+                value={selectedEmployee}
+                onValueChange={(val: string | null) => setSelectedEmployee(val || "all")}
+              >
+                <SelectTrigger className="h-8 text-xs bg-muted/40 border-border/60 focus:bg-background">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate">{selectedEmployeeLabel}</span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold">
+                        All
+                      </div>
+                      <span>All Employees</span>
+                    </div>
+                  </SelectItem>
+                  {employees.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      No employees available
+                    </div>
+                  ) : (
+                    employees.map((emp) => {
+                      const displayName = emp.name?.trim() || "Name unavailable";
+                      const initials = displayName
+                        .split(" ")
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase() || "EM";
+                      return (
+                        <SelectItem key={emp.uid} value={emp.uid} className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5 text-[10px]">
+                              {emp.photoURL && (
+                                <AvatarImage src={emp.photoURL} alt={displayName} />
+                              )}
+                              <AvatarFallback className="text-[9px] bg-muted font-medium">
+                                {initials}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{displayName}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Clear Button next to Employee Filter */}
+            {selectedEmployee !== "all" && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedEmployee("all")}
+                className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground border-border/60 gap-1 shrink-0"
+                title="Clear Employee Filter"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span className="hidden xl:inline">Clear</span>
+              </Button>
+            )}
+
+            {/* 7. Date Filter */}
+            <div className="flex items-center gap-1 shrink-0">
+              <div className="relative flex items-center">
+                <Calendar className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  type="date"
+                  value={selectedMeetingDate}
+                  onChange={(e) => setSelectedMeetingDate(e.target.value)}
+                  title="Filter by Scheduled Meeting / Activity Date"
+                  aria-label="Filter by meeting date"
+                  className="h-8 pl-8 pr-2 text-xs rounded-md bg-muted/40 border border-border/60 text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring focus:bg-background cursor-pointer w-32 sm:w-36"
+                />
+              </div>
+              {selectedMeetingDate && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedMeetingDate("")}
+                  className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground border-border/60 gap-1 shrink-0"
+                  title="Clear Meeting Date Filter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span className="hidden xl:inline">Clear</span>
+                </Button>
+              )}
+            </div>
+
+            {/* 8. New Button */}
+            <Button
+              size="sm"
+              onClick={() => openQuickLeadModal()}
+              className="h-8 gap-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shrink-0"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          {/* Search Bar */}
-          <div className="relative w-48 sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        {/* SECOND ROW: Search Bar Only */}
+        <div className="w-full">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <Input
               type="text"
-              placeholder="Search leads, contacts, email..."
+              placeholder="Search leads, contacts, email, phone, company..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 pl-8 pr-7 text-xs bg-muted/40 border-border/60 focus:bg-background"
+              className="h-9 pl-9 pr-8 text-xs bg-muted/30 border-border/60 focus:bg-background w-full rounded-lg"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                aria-label="Clear search query"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-
-          {/* Employee Filter Dropdown */}
-          <div className="w-40 sm:w-48">
-            <Select
-              value={selectedEmployee}
-              onValueChange={(val: string | null) => setSelectedEmployee(val || "all")}
-            >
-              <SelectTrigger className="h-8 text-xs bg-muted/40 border-border/60 focus:bg-background">
-                <div className="flex items-center gap-1.5 truncate">
-                  <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="truncate">{selectedEmployeeLabel}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="h-5 w-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold">
-                      All
-                    </div>
-                    <span>All Employees</span>
-                  </div>
-                </SelectItem>
-                {employees.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">
-                    No employees available
-                  </div>
-                ) : (
-                  employees.map((emp) => {
-                    const displayName = emp.name?.trim() || "Name unavailable";
-                    const initials = displayName
-                      .split(" ")
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase() || "EM";
-                    return (
-                      <SelectItem key={emp.uid} value={emp.uid} className="text-xs">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5 text-[10px]">
-                            {emp.photoURL && (
-                              <AvatarImage src={emp.photoURL} alt={displayName} />
-                            )}
-                            <AvatarFallback className="text-[9px] bg-muted font-medium">
-                              {initials}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="truncate">{displayName}</span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Clear Button next to Employee Filter */}
-          {selectedEmployee !== "all" && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setSelectedEmployee("all")}
-              className="h-8 px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground border-border/60 gap-1 shrink-0"
-              title="Clear Employee Filter"
-            >
-              <X className="h-3.5 w-3.5" />
-              <span>Clear</span>
-            </Button>
-          )}
-
-          {/* Quick Add Button */}
-          <Button
-            size="sm"
-            onClick={() => openQuickLeadModal()}
-            className="h-8 gap-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New
-          </Button>
         </div>
       </div>
 
@@ -1202,6 +1343,24 @@ export function CrmKanbanPipeline({
                               {formatINR(lead.expectedRevenue)}
                             </div>
 
+                            {/* Scheduled Meeting Pill on Card */}
+                            {(() => {
+                              const matchingActs = leadActivitiesOnSelectedDate.get(lead.id);
+                              if (matchingActs && matchingActs.length > 0) {
+                                const firstAct = matchingActs[0];
+                                return (
+                                  <div className="mt-2 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/25 flex items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                                    <Calendar className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                                    <span className="truncate">
+                                      {firstAct.dueTime ? `${firstAct.dueTime} ` : ""}
+                                      {firstAct.subject || firstAct.type}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+
                             {/* Footer row: Priority Stars, Activity Clock, Salesperson Avatar */}
                             <div className="mt-2.5 pt-2 border-t border-border/60 flex items-center justify-between">
                               {/* 3 Clickable Priority Stars */}
@@ -1334,14 +1493,14 @@ export function CrmKanbanPipeline({
 
       {/* VIEW 2: TABLE VIEW */}
       {viewMode === "table" && (
-        <div className="flex-1 flex flex-col overflow-y-auto pt-3 pb-2 space-y-2.5">
-          <div className="overflow-x-auto max-h-[calc(100vh-14rem)] border border-border/60 rounded-xl bg-card shadow-xs">
+        <div className="flex-1 flex flex-col pt-3 pb-2 space-y-2.5">
+          <div className="overflow-x-auto w-full max-h-[calc(100vh-14rem)] border border-border/60 rounded-xl bg-card shadow-xs">
             <table className="w-full text-xs border-collapse min-w-[1080px] table-fixed">
               <thead className="bg-muted/60 text-muted-foreground uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-border/60 backdrop-blur-sm">
                 <tr>
                   <th
                     onClick={() => handleSort("name")}
-                    className="w-[17%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-left"
+                    className="w-[16%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-left"
                   >
                     <div className="flex items-center gap-1 truncate">
                       <span className="truncate">Opportunity Name</span>
@@ -1370,7 +1529,7 @@ export function CrmKanbanPipeline({
                   </th>
                   <th
                     onClick={() => handleSort("revenue")}
-                    className="w-[13%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-right"
+                    className="w-[12%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-right"
                   >
                     <div className="inline-flex items-center justify-end gap-1 w-full">
                       <span>Expected Revenue</span>
@@ -1388,7 +1547,7 @@ export function CrmKanbanPipeline({
                   </th>
                   <th
                     onClick={() => handleSort("closingDate")}
-                    className="w-[9%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
+                    className="w-[8%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
                     <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Expected Closing</span>
@@ -1397,7 +1556,7 @@ export function CrmKanbanPipeline({
                   </th>
                   <th
                     onClick={() => handleSort("priority")}
-                    className="w-[7%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
+                    className="w-[6%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
                     <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Priority</span>
@@ -1406,14 +1565,14 @@ export function CrmKanbanPipeline({
                   </th>
                   <th
                     onClick={() => handleSort("createdAt")}
-                    className="w-[8%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
+                    className="w-[7%] px-3.5 py-2.5 cursor-pointer hover:text-foreground transition-colors font-semibold text-center"
                   >
                     <div className="inline-flex items-center justify-center gap-1 w-full">
                       <span>Created</span>
                       <ArrowUpDown className="h-3 w-3 opacity-60 shrink-0" />
                     </div>
                   </th>
-                  <th className="w-[5%] px-3.5 py-2.5 text-center font-semibold">Actions</th>
+                  <th className="w-[4%] px-3.5 py-2.5 text-center font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">

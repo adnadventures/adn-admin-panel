@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { adminDb } from "@/lib/firebase/admin";
-import { requireModule, requireModuleEditor } from "@/lib/auth/session";
+import { adminAuth, adminDb } from "@/lib/firebase/admin";
+import { getCurrentUser, requireModule, requireModuleEditor } from "@/lib/auth/session";
+import { canAccessModule } from "@/components/layout/nav-items";
 import {
   COL,
   auditEntry,
@@ -1059,55 +1060,105 @@ export async function deleteCrmStage(id: string): Promise<Result> {
 
 
 export async function quickCreateLead(raw: QuickLeadInput): Promise<{ ok: true; lead: CrmLead } | { ok: false; error: string }> {
-  const user = await requireModuleEditor("crm");
-  const parsed = quickLeadSchema.safeParse(raw);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid lead data" };
-  }
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { ok: false, error: "Please log in to create leads." };
+    }
 
-  const d = parsed.data;
-  const docRef = adminDb.collection(COL.crmLeads).doc();
-  const meta = createMeta(user);
-  const now = new Date().toISOString();
+    // Verify CRM module access
+    if (user.role === "employee" && !canAccessModule(user, "crm")) {
+      return { ok: false, error: "You do not have access to the CRM module." };
+    }
 
-  const payload: CrmLead = {
-    id: docRef.id,
-    name: d.name,
-    stageId: d.stageId,
-    stageName: d.stageName,
-    contactName: d.contactName || d.name,
-    company: d.company || "",
-    expectedRevenue: Number(d.expectedRevenue) || 0,
-    assignedTo: d.assignedTo || user.uid,
-    assignedToName: d.assignedToName || user.name || "Admin",
-    priority: d.priority,
-    phone: d.phone || "",
-    email: d.email || "",
-    notes: d.notes || "",
-    activityStatus: d.activityStatus || "none",
-    leadStatus: d.stageName.toLowerCase() === "won" ? "converted" : "new",
-    createdAt: now,
-    updatedAt: now,
-    createdBy: user.uid,
-    createdByName: user.name || "Admin",
-    updatedBy: user.uid,
-    isDeleted: false,
-  };
+    const parsed = quickLeadSchema.safeParse(raw);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid lead data" };
+    }
 
-  const batch = adminDb.batch();
-  batch.set(docRef, { ...payload, ...meta, id: docRef.id });
-  batch.set(
-    adminDb.collection(COL.auditLogs).doc(),
-    auditEntry(user, "crm_lead.quick_create", "crmLead", docRef.id, {
+    const d = parsed.data;
+
+    // Resolve creator display name dynamically without hardcoded fallbacks
+    let creatorName = user.name?.trim() || "";
+    if (user.role === "employee" && (!creatorName || creatorName === "User" || creatorName.includes("@"))) {
+      try {
+        const authUser = await adminAuth.getUser(user.uid);
+        if (authUser.displayName?.trim()) {
+          creatorName = authUser.displayName.trim();
+        }
+      } catch (authErr) {
+        console.warn("[quickCreateLead] Could not fetch employee auth displayName:", authErr);
+      }
+    }
+    if (!creatorName) {
+      creatorName = user.role === "admin" ? "Admin" : (user.email ? user.email.split("@")[0] : "Staff");
+    }
+
+    // Resolve assigned employee UID and name dynamically
+    const assignedToUid = d.assignedTo?.trim() || user.uid;
+    let assignedToName = d.assignedToName?.trim() || "";
+    if (!assignedToName) {
+      if (assignedToUid === user.uid) {
+        assignedToName = creatorName;
+      } else {
+        try {
+          const assignedUser = await adminAuth.getUser(assignedToUid);
+          assignedToName = assignedUser.displayName?.trim() || assignedUser.email?.split("@")[0] || "Staff";
+        } catch {
+          assignedToName = "Staff";
+        }
+      }
+    }
+
+    const docRef = adminDb.collection(COL.crmLeads).doc();
+    const meta = createMeta(user);
+    const now = new Date().toISOString();
+
+    const payload: CrmLead = {
+      id: docRef.id,
       name: d.name,
       stageId: d.stageId,
-      expectedRevenue: d.expectedRevenue,
-    })
-  );
+      stageName: d.stageName,
+      contactName: d.contactName || d.name,
+      company: d.company || "",
+      expectedRevenue: Number(d.expectedRevenue) || 0,
+      assignedTo: assignedToUid,
+      assignedToName: assignedToName,
+      priority: d.priority,
+      phone: d.phone || "",
+      email: d.email || "",
+      notes: d.notes || "",
+      activityStatus: d.activityStatus || "none",
+      leadStatus: d.stageName.toLowerCase() === "won" ? "converted" : "new",
+      createdAt: now,
+      updatedAt: now,
+      createdBy: user.uid,
+      createdByName: creatorName,
+      updatedBy: user.uid,
+      isDeleted: false,
+    };
 
-  await batch.commit();
-  revalidatePath("/crm");
-  return { ok: true, lead: payload };
+    const batch = adminDb.batch();
+    batch.set(docRef, { ...payload, ...meta, id: docRef.id });
+    batch.set(
+      adminDb.collection(COL.auditLogs).doc(),
+      auditEntry(user, "crm_lead.quick_create", "crmLead", docRef.id, {
+        name: d.name,
+        stageId: d.stageId,
+        expectedRevenue: d.expectedRevenue,
+        assignedTo: assignedToUid,
+        assignedToName: assignedToName,
+      })
+    );
+
+    await batch.commit();
+    revalidatePath("/crm");
+    return { ok: true, lead: payload };
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "Failed to create lead in CRM database";
+    console.error("[quickCreateLead] Error creating lead:", error);
+    return { ok: false, error: errorMsg };
+  }
 }
 
 export async function moveLeadStage(
@@ -1115,35 +1166,46 @@ export async function moveLeadStage(
   newStageId: string,
   newStageName: string
 ): Promise<Result> {
-  const user = await requireModuleEditor("crm");
-  const docRef = adminDb.collection(COL.crmLeads).doc(leadId);
-  const snap = await docRef.get();
-  if (!snap.exists) return { ok: false, error: "Lead not found" };
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { ok: false, error: "Please log in" };
+    if (user.role === "employee" && !canAccessModule(user, "crm")) {
+      return { ok: false, error: "You do not have access to the CRM module." };
+    }
 
-  const meta = updateMeta(user);
-  const updates: Record<string, unknown> = {
-    stageId: newStageId,
-    stageName: newStageName,
-    ...meta,
-  };
+    const docRef = adminDb.collection(COL.crmLeads).doc(leadId);
+    const snap = await docRef.get();
+    if (!snap.exists) return { ok: false, error: "Lead not found" };
 
-  if (newStageName.toLowerCase() === "won") {
-    updates.leadStatus = "converted";
+    const meta = updateMeta(user);
+    const updates: Record<string, unknown> = {
+      stageId: newStageId,
+      stageName: newStageName,
+      ...meta,
+    };
+
+    if (newStageName.toLowerCase() === "won") {
+      updates.leadStatus = "converted";
+    }
+
+    const batch = adminDb.batch();
+    batch.update(docRef, updates);
+    batch.set(
+      adminDb.collection(COL.auditLogs).doc(),
+      auditEntry(user, "crm_lead.move_stage", "crmLead", leadId, {
+        newStageId,
+        newStageName,
+      })
+    );
+
+    await batch.commit();
+    revalidatePath("/crm");
+    return { ok: true };
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "Failed to move lead stage";
+    console.error("[moveLeadStage] Error moving stage:", error);
+    return { ok: false, error: errorMsg };
   }
-
-  const batch = adminDb.batch();
-  batch.update(docRef, updates);
-  batch.set(
-    adminDb.collection(COL.auditLogs).doc(),
-    auditEntry(user, "crm_lead.move_stage", "crmLead", leadId, {
-      newStageId,
-      newStageName,
-    })
-  );
-
-  await batch.commit();
-  revalidatePath("/crm");
-  return { ok: true };
 }
 
 /* =========================================================================

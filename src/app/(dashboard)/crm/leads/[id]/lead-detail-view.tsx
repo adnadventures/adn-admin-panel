@@ -117,8 +117,8 @@ export function LeadDetailView({
   // Active Stage ID
   const activeStageId = lead.stageId || stages[0]?.id || "";
 
-  // Tab State: "notes" | "extra"
-  const [activeTab, setActiveTab] = React.useState<"notes" | "extra">("notes");
+  // Tab State: "notes" | "extra" | "activities"
+  const [activeTab, setActiveTab] = React.useState<"notes" | "extra" | "activities">("notes");
 
   // Form Edit State for Left Panel
   const [formData, setFormData] = React.useState({
@@ -531,6 +531,37 @@ export function LeadDetailView({
             <span>Pipeline</span>
           </Link>
 
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleWonClick}
+            disabled={isUpdatingStage}
+            className={cn(
+              "h-7 text-xs font-semibold px-3 transition-all",
+              lead.stageName?.toLowerCase() === "won" || lead.leadStatus === "converted"
+                ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+            )}
+          >
+            Won
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setLostModalOpen(true)}
+            disabled={isUpdatingStage}
+            className={cn(
+              "h-7 text-xs font-medium px-3",
+              lead.isLost
+                ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                : "border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            )}
+          >
+            Lost
+          </Button>
+
           {lead.isLost && (
             <Badge variant="destructive" className="text-[10px] h-6">
               Lost: {lead.lostReason || "Unqualified"}
@@ -821,6 +852,24 @@ export function LeadDetailView({
               >
                 Extra Info
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("activities")}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-semibold rounded-t-md transition-all border-b-2 flex items-center gap-1.5",
+                  activeTab === "activities"
+                    ? "border-primary text-primary bg-primary/5"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Scheduled Meetings</span>
+                {activities.filter((a) => !a.isDeleted && a.status === "planned").length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                    {activities.filter((a) => !a.isDeleted && a.status === "planned").length}
+                  </span>
+                )}
+              </button>
             </div>
 
             {/* Notes Tab Content */}
@@ -1021,6 +1070,124 @@ export function LeadDetailView({
                     </span>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Scheduled Meetings & Activities Tab Content */}
+            {activeTab === "activities" && (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between pb-1">
+                  <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4 text-primary" />
+                    <span>Scheduled Meetings & Activities</span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActivityModalOpen(true)}
+                    className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Schedule Activity
+                  </Button>
+                </div>
+
+                {activities.filter((a) => !a.isDeleted).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border/70 p-6 text-center space-y-2">
+                    <Calendar className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+                    <p className="text-xs font-medium text-foreground">No meetings or activities scheduled yet</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Click the button above or use "Schedule Activity" in the right chatter panel to plan a meeting or follow-up.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {activities
+                      .filter((a) => !a.isDeleted)
+                      .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))
+                      .map((act) => {
+                        const isDone = act.status === "completed";
+                        return (
+                          <div
+                            key={act.id}
+                            className={cn(
+                              "p-3 rounded-lg border text-xs transition-all flex items-start justify-between gap-3",
+                              isDone
+                                ? "bg-muted/30 border-border/50 text-muted-foreground"
+                                : "bg-card border-border/80 text-foreground shadow-2xs"
+                            )}
+                          >
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className={cn(
+                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                                    act.type === "meeting"
+                                      ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                                      : act.type === "call"
+                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                      : "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                                  )}
+                                >
+                                  {act.type}
+                                </span>
+                                <span className={cn("font-semibold text-xs", isDone && "line-through opacity-70")}>
+                                  {act.subject}
+                                </span>
+                                {isDone ? (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                                    Done
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                                    Planned
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-4 text-[11px] text-muted-foreground pt-0.5">
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3 text-muted-foreground/70" />
+                                  <span>{act.dueDate}</span>
+                                </div>
+                                {act.dueTime && (
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3 text-muted-foreground/70" />
+                                    <span>{act.dueTime}</span>
+                                  </div>
+                                )}
+                                {act.assignedToName && (
+                                  <div className="flex items-center gap-1">
+                                    <span>Assigned: {act.assignedToName}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {act.notes && (
+                                <p className="text-[11px] text-muted-foreground/90 italic pt-1 border-t border-border/30 mt-1">
+                                  "{act.notes}"
+                                </p>
+                              )}
+                            </div>
+
+                            {!isDone && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCompleteActivity(act.id)}
+                                className="h-6 px-2 text-[10px] font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-500/30 shrink-0 gap-1"
+                              >
+                                <Check className="h-3 w-3" />
+                                Mark Done
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             )}
           </div>

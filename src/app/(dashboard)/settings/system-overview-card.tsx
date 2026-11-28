@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import {
   Database,
   Users,
@@ -36,7 +36,32 @@ interface SystemOverviewCardProps {
 
 export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
   const [data, setData] = useState<SystemOverviewData | null>(initialData);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(!initialData);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!initialData) {
+      let isMounted = true;
+      getSystemOverviewAction().then((res) => {
+        if (isMounted) {
+          if (res.ok) {
+            setData(res.data);
+          } else {
+            toast.error(res.error || "Failed to load system usage");
+          }
+          setIsLoadingInitial(false);
+        }
+      }).catch(() => {
+        if (isMounted) {
+          toast.error("Failed to load system usage");
+          setIsLoadingInitial(false);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [initialData]);
 
   const handleRefresh = () => {
     startTransition(async () => {
@@ -80,9 +105,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
             <Server className="h-5 w-5 text-primary" />
             System Storage &amp; Database Overview
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Live database, authentication, Firebase Storage and Cloudflare R2 usage directly retrieved from connected production services.
-          </p>
+
         </div>
 
         <div className="flex items-center gap-3">
@@ -98,14 +121,43 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={isPending}
+            disabled={isPending || isLoadingInitial}
             className="h-8 text-xs font-semibold gap-1.5 border-border/70 hover:bg-muted/80 shadow-xs"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin text-primary" : ""}`} />
-            <span>{isPending ? "Refreshing..." : "Refresh Usage"}</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${isPending || isLoadingInitial ? "animate-spin text-primary" : ""}`} />
+            <span>{isPending || isLoadingInitial ? "Refreshing..." : "Refresh Usage"}</span>
           </Button>
         </div>
       </div>
+
+      {isLoadingInitial ? (
+        <div className="grid gap-4">
+          <Card className="border-border/60 p-6 animate-pulse">
+            <div className="h-5 w-48 bg-muted rounded mb-2"></div>
+            <div className="h-4 w-72 bg-muted/60 rounded mb-6"></div>
+            <div className="space-y-2">
+              <div className="h-8 bg-muted/40 rounded"></div>
+              <div className="h-8 bg-muted/40 rounded"></div>
+              <div className="h-8 bg-muted/40 rounded"></div>
+            </div>
+          </Card>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-border/60 p-5 animate-pulse">
+              <div className="h-4 w-32 bg-muted rounded mb-3"></div>
+              <div className="h-6 w-20 bg-muted/60 rounded"></div>
+            </Card>
+            <Card className="border-border/60 p-5 animate-pulse">
+              <div className="h-4 w-32 bg-muted rounded mb-3"></div>
+              <div className="h-6 w-20 bg-muted/60 rounded"></div>
+            </Card>
+            <Card className="border-border/60 p-5 animate-pulse">
+              <div className="h-4 w-32 bg-muted rounded mb-3"></div>
+              <div className="h-6 w-20 bg-muted/60 rounded"></div>
+            </Card>
+          </div>
+        </div>
+      ) : (
+        <>
 
       {/* CARD 1: FIRESTORE DATABASE COLLECTIONS */}
       <Card className="border-border/70 shadow-xs">
@@ -117,9 +169,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">Firestore Database Collections</CardTitle>
-                <CardDescription className="text-xs">
-                  Dynamically discovered top-level collections and nested subcollections with count aggregations.
-                </CardDescription>
+
               </div>
             </div>
 
@@ -232,10 +282,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
             </div>
           </div>
 
-          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 pt-1">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-            <span>Document counts are retrieved using Firestore Count Aggregations without downloading document contents or leaking sensitive fields.</span>
-          </p>
+
         </CardContent>
       </Card>
 
@@ -249,9 +296,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">Firebase Storage &amp; Free Quota Monitoring</CardTitle>
-                <CardDescription className="text-xs">
-                  Authoritative storage usage and free-tier allowance for Cloud Firestore and Firebase Cloud Storage.
-                </CardDescription>
+
               </div>
             </div>
 
@@ -276,35 +321,45 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
               <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
                 <div className="text-[11px] font-medium text-muted-foreground">Free Storage Allowance</div>
-                <div className="text-sm font-bold text-foreground">1 GiB (1,024 MiB)</div>
+                <div className="text-sm font-bold text-foreground">{data?.firestoreStorage.freeTierAllowance ?? "1 GiB (1,024 MiB)"}</div>
                 <div className="text-[10px] text-muted-foreground">Standard no-cost tier</div>
               </div>
 
               <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
                 <div className="text-[11px] font-medium text-muted-foreground">Stored Data Usage</div>
-                <div className="text-sm font-semibold text-muted-foreground italic">Usage data unavailable</div>
+                <div className={`text-sm font-semibold ${data?.firestoreStorage.status === "ok" ? "text-foreground" : "text-muted-foreground italic"}`}>
+                  {data?.firestoreStorage.usedStorage ?? "Usage data unavailable"}
+                </div>
                 <div className="text-[10px] text-muted-foreground">Disk bytes &amp; indexes</div>
               </div>
 
               <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
                 <div className="text-[11px] font-medium text-muted-foreground">Remaining Allowance</div>
-                <div className="text-sm font-semibold text-muted-foreground italic">Usage data unavailable</div>
+                <div className={`text-sm font-semibold ${data?.firestoreStorage.status === "ok" ? "text-foreground" : "text-muted-foreground italic"}`}>
+                  {data?.firestoreStorage.status === "ok"
+                    ? data.firestoreStorage.remainingAllowance
+                    : "Requires Cloud Monitoring"}
+                </div>
                 <div className="text-[10px] text-muted-foreground">Requires Cloud Monitoring</div>
               </div>
 
               <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
                 <div className="text-[11px] font-medium text-muted-foreground">Usage Percentage</div>
-                <div className="text-sm font-semibold text-muted-foreground italic">Unavailable</div>
-                <div className="text-[10px] text-muted-foreground">&lt; 0.1% based on 201 docs</div>
+                <div className={`text-sm font-semibold ${data?.firestoreStorage.status === "ok" ? "text-foreground" : "text-muted-foreground italic"}`}>
+                  {data?.firestoreStorage.usagePercentage ?? "Unavailable"}
+                </div>
+                <div className="text-[10px] text-muted-foreground">Of 1 GiB free tier</div>
               </div>
             </div>
 
-            <div className="p-2.5 rounded-md bg-muted/30 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">
-              <Info className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-              <span>
-                <strong>Firestore Free Quota Terms:</strong> Google Cloud Firestore provides 1 GiB of stored data at no cost per project for the primary <code>(default)</code> database. Exact byte usage includes document payloads, metadata, and composite indexes. Measuring authoritative byte metrics requires enabling the Google Cloud Monitoring API with telemetry metric <code>firestore.googleapis.com/storage/total_bytes</code>.
-              </span>
-            </div>
+            {data?.firestoreStorage.note && (
+              <div className="p-2.5 rounded-md bg-amber-500/8 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2 mt-2">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                <span>{data.firestoreStorage.note}</span>
+              </div>
+            )}
+
+
           </div>
 
           {/* Section 2: Firebase Cloud Storage Buckets (GCS) */}
@@ -402,9 +457,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
               </div>
             </div>
 
-            <p className="text-[11px] text-muted-foreground">
-              • <strong>Cloud Storage Free Tier:</strong> Modern Firebase Storage buckets (<code>*.firebasestorage.app</code>) include a monthly free allowance of <strong>5 GB-month/month</strong>. Legacy buckets (<code>*.appspot.com</code>) receive 5 GB stored capacity under legacy terms.
-            </p>
+
           </div>
         </CardContent>
       </Card>
@@ -419,9 +472,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">Firebase Authentication Members</CardTitle>
-                <CardDescription className="text-xs">
-                  Total registered user accounts with credentials in Firebase Auth (distinct from Firestore user records).
-                </CardDescription>
+
               </div>
             </div>
 
@@ -467,12 +518,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
             </div>
           </div>
 
-          <div className="p-2.5 rounded-md bg-muted/30 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">
-            <Info className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
-            <span>
-              <strong>Note:</strong> Firebase Authentication counts reflect user credentials registered in Google Identity Platform. This count is independent from Firestore profile collections (e.g. employee profiles or customer records) as users and documents may be added or removed independently.
-            </span>
-          </div>
+
         </CardContent>
       </Card>
 
@@ -486,9 +532,7 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">Cloudflare R2 Storage Overview</CardTitle>
-                <CardDescription className="text-xs">
-                  Direct object storage usage across application-used buckets in Cloudflare R2.
-                </CardDescription>
+
               </div>
             </div>
 
@@ -622,6 +666,8 @@ export function SystemOverviewCard({ initialData }: SystemOverviewCardProps) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

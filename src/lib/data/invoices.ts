@@ -13,6 +13,18 @@ export async function listInvoices(): Promise<Invoice[]> {
   return snapshot.docs.map(read).sort((a, b) => b.issueDate.localeCompare(a.issueDate));
 }
 
+/**
+ * Lightweight projection used only for dashboard financial aggregation.
+ * Fetches only the fields needed for revenue/pending-collection calculations.
+ */
+export async function listInvoicesForDashboard(): Promise<Pick<Invoice, "id" | "status" | "currency" | "amountPaid" | "remainingBalance" | "issueDate">> {
+  const snapshot = await adminDb.collection(COL.invoices)
+    .where("isDeleted", "==", false)
+    .select("status", "currency", "amountPaid", "remainingBalance", "issueDate")
+    .get();
+  return snapshot.docs.map((d) => serializeDoc<Invoice>(d)) as unknown as Promise<Pick<Invoice, "id" | "status" | "currency" | "amountPaid" | "remainingBalance" | "issueDate">>;
+}
+
 export async function getInvoice(id: string): Promise<Invoice | null> {
   const snapshot = await adminDb.collection(COL.invoices).doc(id).get();
   if (!snapshot.exists || snapshot.data()?.isDeleted) return null;

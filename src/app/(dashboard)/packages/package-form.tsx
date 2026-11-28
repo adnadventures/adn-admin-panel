@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { useRef, useState, type ChangeEvent } from "react";
+import { useRef, useState, useEffect, type ChangeEvent } from "react";
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/shared/page-header";
 import { CURRENCIES, CURRENCY_CODES, formatMoney, fromMinor, toMinor, type CurrencyCode } from "@/lib/finance/currency";
 import {
   GROUP_LABEL, GROUP_TYPES, PACKAGE_STATUSES, STATUS_LABEL,
@@ -238,14 +239,28 @@ function ListingField({
 
 /* ---------- main form ---------- */
 export function PackageForm({
-  pkg, rates,
-}: { pkg: TravelPackage | null; rates: Record<string, number> }) {
+  pkg,
+  rates,
+  showPageHeader = false,
+  headerTitle,
+  headerDescription,
+  backHref,
+  backLabel,
+}: {
+  pkg: TravelPackage | null;
+  rates: Record<string, number>;
+  showPageHeader?: boolean;
+  headerTitle?: string;
+  headerDescription?: string;
+  backHref?: string;
+  backLabel?: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const {
     register, control, handleSubmit, setValue, getValues,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<PackageFormValues>({
     resolver: zodResolver(packageFormSchema),
     defaultValues: {
@@ -324,8 +339,31 @@ export function PackageForm({
     });
   }
 
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-6">
+    <>
+      {showPageHeader && (
+        <PageHeader
+          title={headerTitle || (pkg ? `Edit ${pkg.name}` : "New package")}
+          description={headerDescription || (pkg ? undefined : "Create a tour package.")}
+          backHref={backHref || (pkg ? `/packages/${pkg.id}` : "/packages")}
+          backLabel={backLabel || "Back to Packages"}
+          hasUnsavedChanges={isDirty}
+          confirmTitle="Unsaved Package Details"
+          confirmMessage="You have entered package details that haven't been saved yet. Leaving this page will discard your changes. Are you sure you want to go back?"
+        />
+      )}
+      <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-6">
       {/* Basics */}
       <Card>
         <CardHeader><CardTitle>Basics</CardTitle></CardHeader>
@@ -565,5 +603,6 @@ export function PackageForm({
         </Link>
       </div>
     </form>
+    </>
   );
 }

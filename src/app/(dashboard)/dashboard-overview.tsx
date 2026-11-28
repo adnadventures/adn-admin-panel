@@ -12,7 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CURRENCIES, formatMoney, type CurrencyCode } from "@/lib/finance/currency";
 import { formatDate } from "@/lib/format";
-import type { BookingStatus } from "@/types/models";
+import type { BookingStatus, TargetProgress } from "@/types/models";
+import { AdminMyTargetProgressCard } from "@/components/dashboard/admin-target-progress";
+import { EmployeeTargetProgress } from "@/components/dashboard/employee-target-progress";
 
 type DashboardMonth = {
   key: string;
@@ -56,6 +58,9 @@ type Props = {
   statuses: Record<BookingStatus, number>;
   upcoming: UpcomingBooking[];
   showFinancials: boolean;
+  adminTargets?: TargetProgress[];
+  employeeTargets?: TargetProgress[];
+  targets?: TargetProgress[];
 };
 
 const SERIES_COLORS = {
@@ -219,6 +224,9 @@ export function DashboardOverview({
   statuses,
   upcoming,
   showFinancials,
+  adminTargets = [],
+  employeeTargets = [],
+  targets = [],
 }: Props) {
   const [currency, setCurrency] = useState<CurrencyCode>(currencies[0] ?? "INR");
   const activeBookings = statuses.open + statuses.closed;
@@ -277,206 +285,236 @@ export function DashboardOverview({
 
   return (
     <div className="space-y-6">
-      <div className={`grid gap-4 sm:grid-cols-2 ${showFinancials ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
-        <MetricCard
-          title="Bookings"
-          value={String(bookingCount)}
-          detail={`${activeBookings} active · ${statuses.completed} completed`}
-          icon={<CalendarDays className="size-4" />}
-          accent="bg-teal-500/10 text-teal-700 dark:text-teal-300"
-        />
-        <MetricCard
-          title="Active travellers"
-          value={String(activeTravelers)}
-          detail="Members in non-cancelled bookings."
-          icon={<Users className="size-4" />}
-          accent="bg-violet-500/10 text-violet-700 dark:text-violet-300"
-        />
-        {showFinancials && (
-          <>
-            <MetricCard
-              title="All-time revenue"
-              value={money(revenue[currency])}
-              detail="Paid amounts across all non-cancelled invoices."
-              icon={<CircleDollarSign className="size-4" />}
-              accent="bg-sky-500/10 text-sky-700 dark:text-sky-300"
-            />
-            <MetricCard
-              title="Pending collection"
-              value={money(pendingCollection[currency])}
-              detail="Remaining balances on non-cancelled invoices."
-              icon={<CircleDollarSign className="size-4" />}
-              accent="bg-amber-500/10 text-amber-700 dark:text-amber-300"
-            />
-            <MetricCard
-              title="All-time expenses"
-              value={financialUnavailable ? "Unavailable" : money(expenses[currency])}
-              detail="Booking and company expenses."
-              icon={<ArrowDownRight className="size-4" />}
-              accent="bg-rose-500/10 text-rose-700 dark:text-rose-300"
-            />
-            <MetricCard
-              title="All-time profit"
-              value={financialUnavailable ? "Unavailable" : money(profit[currency])}
-              detail="Revenue minus total expenses."
-              icon={<CircleDollarSign className="size-4" />}
-              accent={profit[currency] !== undefined && profit[currency]! < 0
-                ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
-                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}
-            />
-          </>
-        )}
+      {/* Top Section: Six Summary Cards (2 cols x 3 rows) on Left, Target Cards on Right */}
+      <div className={`grid gap-4 ${showFinancials ? "xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.85fr)]" : "xl:grid-cols-2"}`}>
+        {/* Left: 6 Summary Cards in 2 columns and 3 rows */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Row 1, Col 1: Bookings */}
+          <MetricCard
+            title="Bookings"
+            value={String(bookingCount)}
+            detail={`${activeBookings} active · ${statuses.completed} completed`}
+            icon={<CalendarDays className="size-4" />}
+            accent="bg-teal-500/10 text-teal-700 dark:text-teal-300"
+          />
+
+          {/* Row 1, Col 2: Active Travellers */}
+          <MetricCard
+            title="Active travellers"
+            value={String(activeTravelers)}
+            detail="Members in non-cancelled bookings."
+            icon={<Users className="size-4" />}
+            accent="bg-violet-500/10 text-violet-700 dark:text-violet-300"
+          />
+
+          {showFinancials && (
+            <>
+              {/* Row 2, Col 1: Pending Collection */}
+              <MetricCard
+                title="Pending collection"
+                value={money(pendingCollection[currency])}
+                detail="Remaining balances on non-cancelled invoices."
+                icon={<CircleDollarSign className="size-4" />}
+                accent="bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              />
+
+              {/* Row 2, Col 2: All-Time Expenses */}
+              <MetricCard
+                title="All-time expenses"
+                value={financialUnavailable ? "Unavailable" : money(expenses[currency])}
+                detail="Booking and company expenses."
+                icon={<ArrowDownRight className="size-4" />}
+                accent="bg-rose-500/10 text-rose-700 dark:text-rose-300"
+              />
+
+              {/* Row 3, Col 1: All-Time Revenue */}
+              <MetricCard
+                title="All-time revenue"
+                value={money(revenue[currency])}
+                detail="Total revenue from bookings."
+                icon={<CircleDollarSign className="size-4" />}
+                accent="bg-sky-500/10 text-sky-700 dark:text-sky-300"
+              />
+
+              {/* Row 3, Col 2: All-Time Profit */}
+              <MetricCard
+                title="All-time profit"
+                value={financialUnavailable ? "Unavailable" : money(profit[currency])}
+                detail="Revenue minus total expenses."
+                icon={<CircleDollarSign className="size-4" />}
+                accent={
+                  profit[currency] !== undefined && profit[currency]! < 0
+                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                }
+              />
+            </>
+          )}
+        </div>
+
+        {/* Right: Target Cards (My Target Progress on top, Employee Target Progress directly below) */}
+        <div className="space-y-4">
+          {showFinancials && (
+            <AdminMyTargetProgressCard targets={adminTargets} />
+          )}
+          <EmployeeTargetProgress targets={employeeTargets.length > 0 ? employeeTargets : targets} />
+        </div>
       </div>
 
-      <div className={`grid items-start gap-4 ${showFinancials ? "xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.8fr)]" : "xl:grid-cols-2"}`}>
-        <Card>
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <CardTitle>Revenue, expenses &amp; profit</CardTitle>
-              <CardDescription>Paid invoice amounts by issue date · costs by travel and expense date · last six months</CardDescription>
-            </div>
-            {showFinancials && (
-              <select
-                aria-label="Chart currency"
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value as CurrencyCode)}
-                className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-              >
-                {(currencies.length ? currencies : ["INR" as const]).map((code) => (
-                  <option key={code} value={code}>{code} · {CURRENCIES[code].name}</option>
-                ))}
-              </select>
-            )}
-          </CardHeader>
-          <CardContent>
-            {showFinancials ? (
-              <div className="space-y-4">
-                {!hasFinancialData && (
-                  <p className="text-muted-foreground text-xs">No invoice revenue or expenses in this currency yet.</p>
-                )}
-                {financialUnavailable && (
-                  <p className="text-amber-700 text-xs dark:text-amber-300">
-                    Some booking costs could not be converted. Check configured exchange rates.
-                  </p>
-                )}
+      {/* Middle+Bottom Section: Chart + Upcoming Bookings on Left, Booking Status + Financial Summary on Right */}
+      <div className={`grid items-start gap-4 ${showFinancials ? "xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.85fr)]" : "xl:grid-cols-2"}`}>
+        {/* Left column: Chart on top, Upcoming Bookings below */}
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>Revenue, expenses &amp; profit</CardTitle>
+                <CardDescription>Paid invoice amounts by issue date · costs by travel and expense date · last six months</CardDescription>
+              </div>
+              {showFinancials && (
+                <select
+                  aria-label="Chart currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value as CurrencyCode)}
+                  className="border-input bg-background h-9 rounded-md border px-3 text-sm"
+                >
+                  {(currencies.length ? currencies : ["INR" as const]).map((code) => (
+                    <option key={code} value={code}>{code} · {CURRENCIES[code].name}</option>
+                  ))}
+                </select>
+              )}
+            </CardHeader>
+            <CardContent>
+              {showFinancials ? (
+                <div className="space-y-4">
+                  {!hasFinancialData && (
+                    <p className="text-muted-foreground text-xs">No invoice revenue or expenses in this currency yet.</p>
+                  )}
+                  {financialUnavailable && (
+                    <p className="text-amber-700 text-xs dark:text-amber-300">
+                      Some booking costs could not be converted. Check configured exchange rates.
+                    </p>
+                  )}
+                  <LineChart
+                    labels={months.map((month) => month.label)}
+                    series={financialSeries}
+                    formatValue={(value) => formatMoney(Math.round(value * 100), currency)}
+                    ariaLabel={`Monthly revenue, booking expenses, company expenses, total expenses and profit in ${currency}`}
+                  />
+                </div>
+              ) : (
                 <LineChart
                   labels={months.map((month) => month.label)}
-                  series={financialSeries}
-                  formatValue={(value) => formatMoney(Math.round(value * 100), currency)}
-                  ariaLabel={`Monthly revenue, booking expenses, company expenses, total expenses and profit in ${currency}`}
+                  series={bookingSeries}
+                  formatValue={(value) => String(Math.round(value))}
+                  ariaLabel="Monthly booking and traveler counts"
                 />
-              </div>
-            ) : (
-              <LineChart
-                labels={months.map((month) => month.label)}
-                series={bookingSeries}
-                formatValue={(value) => String(Math.round(value))}
-                ariaLabel="Monthly booking and traveler counts"
-              />
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Booking status</CardTitle>
-            <CardDescription>Current status of all bookings.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {([
-              ["Open", statuses.open, "bg-emerald-500"],
-              ["Closed", statuses.closed, "bg-amber-500"],
-              ["Completed", statuses.completed, "bg-sky-500"],
-              ["Cancelled", statuses.cancelled, "bg-rose-500"],
-            ] as const).map(([label, count, color]) => (
-              <div key={label} className="space-y-1.5">
-                <div className="flex justify-between text-sm">
-                  <span>{label}</span>
-                  <span className="text-muted-foreground">{count} · {statusTotal ? Math.round((count / statusTotal) * 100) : 0}%</span>
-                </div>
-                <div className="bg-muted h-2 overflow-hidden rounded-full">
-                  <div className={`${color} h-full rounded-full`} style={{ width: `${statusTotal ? (count / statusTotal) * 100 : 0}%` }} />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className={`grid items-start gap-4 ${showFinancials ? "xl:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.9fr)]" : "xl:grid-cols-1"}`}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming bookings</CardTitle>
-            <CardDescription>Next trips with open or closed booking status.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {upcoming.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No upcoming bookings.</p>
-            ) : upcoming.map((booking) => (
-              <Link
-                key={booking.id}
-                href={`/bookings/${booking.id}`}
-                className="hover:bg-muted/50 flex items-center justify-between gap-4 rounded-md border p-3 transition-colors"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{booking.title}</span>
-                  <span className="text-muted-foreground block truncate text-xs">
-                    {booking.bookingNo} · {booking.destination}
-                  </span>
-                  <span className="text-muted-foreground block text-xs">
-                    {formatDate(booking.travelStart)} · {booking.memberCount} traveler{booking.memberCount === 1 ? "" : "s"}
-                    {booking.maxPersons > 0 ? ` / ${booking.maxPersons} slots` : ""}
-                  </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <Badge variant={booking.status === "open" ? "default" : "secondary"}>
-                    {booking.status}
-                  </Badge>
-                  {showFinancials && (
-                    <span className="mt-1 block text-xs font-medium">
-                      {formatMoney(booking.totalAmount, booking.currency)}
-                    </span>
-                  )}
-                </span>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-
-        {showFinancials ? (
           <Card>
             <CardHeader>
-              <CardTitle>Financial summary</CardTitle>
-              <CardDescription>Non-cancelled invoices and expenses · grouped by currency</CardDescription>
+              <CardTitle>Upcoming bookings</CardTitle>
+              <CardDescription>Next trips with open or closed booking status.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {upcoming.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No upcoming bookings.</p>
+              ) : upcoming.map((booking) => (
+                <Link
+                  key={booking.id}
+                  href={`/bookings/${booking.id}`}
+                  className="hover:bg-muted/50 flex items-center justify-between gap-4 rounded-md border p-3 transition-colors"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{booking.title}</span>
+                    <span className="text-muted-foreground block truncate text-xs">
+                      {booking.bookingNo} · {booking.destination}
+                    </span>
+                    <span className="text-muted-foreground block text-xs">
+                      {formatDate(booking.travelStart)} · {booking.memberCount} traveler{booking.memberCount === 1 ? "" : "s"}
+                      {booking.maxPersons > 0 ? ` / ${booking.maxPersons} slots` : ""}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <Badge variant={booking.status === "open" ? "default" : "secondary"}>
+                      {booking.status}
+                    </Badge>
+                    {showFinancials && (
+                      <span className="mt-1 block text-xs font-medium">
+                        {formatMoney(booking.totalAmount, booking.currency)}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column: Booking Status on top, Financial Summary directly below */}
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Booking status</CardTitle>
+              <CardDescription>Current status of all bookings.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {currencies.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No invoice financial data yet.</p>
-              ) : currencies.map((code) => (
-                <div key={code} className="space-y-2 border-b pb-3 last:border-0 last:pb-0">
-                  <p className="text-sm font-semibold">{code} · {CURRENCIES[code].name}</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <span className="text-muted-foreground">Paid invoice revenue</span>
-                    <strong className="text-right">{money(revenue[code])}</strong>
-                    <span className="text-muted-foreground">Pending collection</span>
-                    <strong className="text-right">{money(pendingCollection[code])}</strong>
-                    <span className="text-muted-foreground">Total expenses</span>
-                    <strong className="text-right">
-                      {unavailable[code] ? "Unavailable" : money(expenses[code])}
-                    </strong>
-                    <span className="text-muted-foreground">Profit</span>
-                    <strong className="text-right">
-                      {unavailable[code] ? "Unavailable" : money(profit[code])}
-                    </strong>
+              {([
+                ["Open", statuses.open, "bg-emerald-500"],
+                ["Closed", statuses.closed, "bg-amber-500"],
+                ["Completed", statuses.completed, "bg-sky-500"],
+                ["Cancelled", statuses.cancelled, "bg-rose-500"],
+              ] as const).map(([label, count, color]) => (
+                <div key={label} className="space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span>{label}</span>
+                    <span className="text-muted-foreground">{count} · {statusTotal ? Math.round((count / statusTotal) * 100) : 0}%</span>
+                  </div>
+                  <div className="bg-muted h-2 overflow-hidden rounded-full">
+                    <div className={`${color} h-full rounded-full`} style={{ width: `${statusTotal ? (count / statusTotal) * 100 : 0}%` }} />
                   </div>
                 </div>
               ))}
-              <Link href="/finance" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-                View finance report <ArrowDownRight className="size-4" />
-              </Link>
             </CardContent>
           </Card>
-        ) : null}
+
+          {showFinancials ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Financial summary</CardTitle>
+                <CardDescription>Non-cancelled invoices and expenses · grouped by currency</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {currencies.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No invoice financial data yet.</p>
+                ) : currencies.map((code) => (
+                  <div key={code} className="space-y-2 border-b pb-3 last:border-0 last:pb-0">
+                    <p className="text-sm font-semibold">{code} · {CURRENCIES[code].name}</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <span className="text-muted-foreground">Paid invoice revenue</span>
+                      <strong className="text-right">{money(revenue[code])}</strong>
+                      <span className="text-muted-foreground">Pending collection</span>
+                      <strong className="text-right">{money(pendingCollection[code])}</strong>
+                      <span className="text-muted-foreground">Total expenses</span>
+                      <strong className="text-right">
+                        {unavailable[code] ? "Unavailable" : money(expenses[code])}
+                      </strong>
+                      <span className="text-muted-foreground">Profit</span>
+                      <strong className="text-right">
+                        {unavailable[code] ? "Unavailable" : money(profit[code])}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+                <Link href="/finance" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                  View finance report <ArrowDownRight className="size-4" />
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
       </div>
     </div>
   );

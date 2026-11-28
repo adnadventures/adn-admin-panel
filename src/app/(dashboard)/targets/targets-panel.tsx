@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -18,6 +19,7 @@ import {
   Target as TargetIcon,
   Trash2,
   Trophy,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -57,6 +59,7 @@ import {
   deleteTarget,
   setTargetStatus,
   updateTarget,
+  type TargetEmployeeOption,
 } from "@/actions/targets";
 
 const METRICS: { value: TargetMetric; label: string; unit: string }[] = [
@@ -82,6 +85,8 @@ type Props = {
   targets: TargetProgress[];
   today: string;
   management?: boolean;
+  employees?: TargetEmployeeOption[];
+  currentUser?: { uid: string; name: string; role: string };
 };
 
 type FormState = {
@@ -93,6 +98,7 @@ type FormState = {
   periodDate: string;
   customEndDate: string;
   description: string;
+  employeeId: string;
 };
 
 function isMoney(metric: TargetMetric) {
@@ -164,6 +170,28 @@ function TargetCard({
             {statusLabel(target.displayStatus)}
           </Badge>
         </div>
+        {target.assignmentType === "admin" ? (
+          <div className="flex items-center gap-1.5 text-xs font-medium">
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-500/25 dark:text-amber-200">
+              <TargetIcon className="size-3" aria-hidden="true" />
+              <span>Admin: {target.employeeName || "Admin"}</span>
+            </span>
+          </div>
+        ) : target.employeeName ? (
+          <div className="flex items-center gap-1.5 text-xs font-medium">
+            <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/15 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-500/25 dark:text-blue-200">
+              <User className="size-3" aria-hidden="true" />
+              <span>{target.employeeName}</span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs font-medium">
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-500/25 dark:text-amber-200">
+              <TargetIcon className="size-3" aria-hidden="true" />
+              <span>Admin Target</span>
+            </span>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <CalendarDays className="size-3.5" aria-hidden="true" />
           <span>{formatDate(target.startDate)} – {formatDate(target.endDate)}</span>
@@ -250,7 +278,7 @@ function TargetCard({
   );
 }
 
-function makeDefaultForm(today: string): FormState {
+function makeDefaultForm(today: string, defaultEmployeeId = ""): FormState {
   return {
     name: "",
     metric: "bookings",
@@ -260,10 +288,11 @@ function makeDefaultForm(today: string): FormState {
     periodDate: today,
     customEndDate: "",
     description: "",
+    employeeId: defaultEmployeeId,
   };
 }
 
-function targetToForm(target: TargetProgress): FormState {
+function targetToForm(target: TargetProgress, fallbackAssignee = ""): FormState {
   return {
     name: target.name,
     metric: target.metric,
@@ -273,6 +302,7 @@ function targetToForm(target: TargetProgress): FormState {
     periodDate: target.startDate,
     customEndDate: target.period === "custom" ? target.endDate : "",
     description: target.description,
+    employeeId: target.employeeId ?? fallbackAssignee,
   };
 }
 
@@ -356,11 +386,47 @@ function Celebration({
   );
 }
 
-export function TargetsPanel({ targets, today, management = false }: Props) {
+export function TargetsPanel({
+  targets,
+  today,
+  management = false,
+  employees = [],
+  currentUser,
+}: Props) {
+  const searchParams = useSearchParams();
+  const categoryParam = searchParams.get("category");
+  const [selectedCategory, setSelectedCategory] = useState<"all" | "admin" | "employee">(() => {
+    if (categoryParam === "admin") return "admin";
+    if (categoryParam === "employee") return "employee";
+    return "all";
+  });
+
+  useEffect(() => {
+    const cat = searchParams.get("category");
+    if (cat === "admin" || cat === "employee" || cat === "all") {
+      setSelectedCategory(cat);
+    }
+  }, [searchParams]);
+
+  const handleCategoryChange = (cat: "all" | "admin" | "employee") => {
+    setSelectedCategory(cat);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (cat === "all") {
+        url.searchParams.delete("category");
+      } else {
+        url.searchParams.set("category", cat);
+      }
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
+
   const [isPending, startTransition] = useTransition();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<TargetProgress | null>(null);
-  const [form, setForm] = useState<FormState>(() => makeDefaultForm(today));
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState("all");
+  const defaultAssignee = currentUser?.uid || employees[0]?.uid || "";
+  const [form, setForm] = useState<FormState>(() => makeDefaultForm(today, defaultAssignee));
   const [pendingDelete, setPendingDelete] = useState<TargetProgress | null>(null);
   const [celebrationQueue, setCelebrationQueue] = useState<TargetProgress[]>(() => {
     const first = targets.filter((target) => target.celebration);
@@ -384,12 +450,12 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
 
   const openNewTarget = () => {
     setEditing(null);
-    setForm(makeDefaultForm(today));
+    setForm(makeDefaultForm(today, defaultAssignee));
     setEditorOpen(true);
   };
   const openEditTarget = (target: TargetProgress) => {
     setEditing(target);
-    setForm(targetToForm(target));
+    setForm(targetToForm(target, defaultAssignee));
     setEditorOpen(true);
   };
   const updateForm = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -397,6 +463,11 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
 
   const submitTarget = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!form.employeeId) {
+      toast.error("Please select who this target is assigned to");
+      return;
+    }
+    const isForAdmin = form.employeeId === currentUser?.uid;
     startTransition(async () => {
       try {
         const input = {
@@ -408,6 +479,8 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
           periodDate: form.periodDate,
           ...(form.period === "custom" ? { customEndDate: form.customEndDate } : {}),
           description: form.description,
+          employeeId: form.employeeId,
+          assignmentType: isForAdmin ? ("admin" as const) : ("employee" as const),
         };
         const result = editing
           ? await updateTarget(editing.id, input)
@@ -455,45 +528,123 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
     });
   };
 
-  const activeTargets = targets.filter((target) =>
+  const isTargetForAdmin = (target: TargetProgress) => {
+    if (target.assignmentType === "admin") return true;
+    if (target.assignmentType === "employee") return false;
+    if (currentUser?.uid && target.employeeId === currentUser.uid) return true;
+    if (!target.employeeId) return true;
+    return false;
+  };
+
+  const allAdminTargets = targets.filter(isTargetForAdmin);
+  const allEmployeeTargets = targets.filter((t) => !isTargetForAdmin(t));
+
+  const isSpecificEmployeeSelected = selectedEmployeeFilter !== "all";
+  const selectedEmployeeObj = isSpecificEmployeeSelected
+    ? employees.find((e) => e.uid === selectedEmployeeFilter)
+    : null;
+  const selectedEmployeeName = selectedEmployeeObj?.name || "Employee";
+
+  // When a specific employee is selected, effectiveTargets must strictly be ONLY that employee's targets
+  const effectiveTargets = isSpecificEmployeeSelected
+    ? allEmployeeTargets.filter((target) => target.employeeId === selectedEmployeeFilter)
+    : selectedCategory === "admin"
+      ? allAdminTargets
+      : selectedCategory === "employee"
+        ? allEmployeeTargets
+        : [...allAdminTargets, ...allEmployeeTargets];
+
+  const activeTargets = effectiveTargets.filter((target) =>
     target.displayStatus === "in_progress"
     || (target.displayStatus === "completed" && target.endDate >= today),
   );
-  const achievedCount = targets.filter((target) => target.displayStatus === "completed").length;
-  const inProgressCount = targets.filter((target) => target.displayStatus === "in_progress").length;
-  const expiredCount = targets.filter((target) => target.displayStatus === "expired").length;
-  const percentages = targets
+  const achievedCount = effectiveTargets.filter((target) => target.displayStatus === "completed").length;
+  const inProgressCount = effectiveTargets.filter((target) => target.displayStatus === "in_progress").length;
+  const expiredCount = effectiveTargets.filter((target) => target.displayStatus === "expired").length;
+  const percentages = effectiveTargets
     .filter((target) => target.displayStatus !== "paused" && target.progressPercent !== null)
     .map((target) => target.progressPercent!);
   const overall = percentages.length
     ? percentages.reduce((total, percent) => total + percent, 0) / percentages.length
     : 0;
+
   const shownTargets = management
-    ? targets
-    : [...activeTargets, ...targets.filter((target) => target.displayStatus === "paused")]
-      .slice(0, 3);
+    ? effectiveTargets
+    : [...activeTargets, ...effectiveTargets.filter((target) => target.displayStatus === "paused")].slice(0, 3);
   const periodRange = getTargetDateRange(form.period, form.periodDate, form.customEndDate);
 
   return (
     <section className="space-y-5" aria-labelledby="targets-heading">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 id="targets-heading" className="text-xl font-semibold tracking-tight">
-            {management ? "All targets" : "Targets & Achievements"}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Track progress automatically from your bookings, customers, and finance records.
-          </p>
+          <h1 id="targets-heading" className="text-2xl font-semibold tracking-tight">
+            {management ? "Targets & Goals" : "My Targets & Achievements"}
+          </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {management && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Category:</span>
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  const cat = e.target.value as "all" | "admin" | "employee";
+                  handleCategoryChange(cat);
+                  if (cat === "admin") {
+                    setSelectedEmployeeFilter("all");
+                  }
+                }}
+                className="border-input bg-background h-9 rounded-md border px-2.5 text-xs font-medium focus:border-primary focus:outline-none"
+              >
+                <option value="all">All Targets</option>
+                <option value="admin">Admin Targets</option>
+                <option value="employee">Employee Targets</option>
+              </select>
+            </div>
+          )}
+
+          {management && selectedCategory !== "admin" && employees.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Filter Employee:</span>
+              <select
+                value={selectedEmployeeFilter}
+                onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
+                className="border-input bg-background h-9 rounded-md border px-2.5 text-xs focus:border-primary focus:outline-none"
+              >
+                <option value="all">All Employees</option>
+                {employees.map((emp) => (
+                  <option key={emp.uid} value={emp.uid}>
+                    {emp.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {management && (selectedCategory !== "all" || selectedEmployeeFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                handleCategoryChange("all");
+                setSelectedEmployeeFilter("all");
+              }}
+              className="h-9 px-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Reset filters
+            </Button>
+          )}
+
           {!management && (
             <Link href="/targets" className={buttonVariants({ variant: "outline" })}>
               View all targets <ArrowUpRight aria-hidden="true" />
             </Link>
           )}
-          <Button onClick={openNewTarget}>
-            <Plus aria-hidden="true" /> Set a target
-          </Button>
+          {management && (
+            <Button onClick={openNewTarget}>
+              <Plus aria-hidden="true" /> Set a target
+            </Button>
+          )}
         </div>
       </div>
 
@@ -506,43 +657,42 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
           icon={<Sparkles />}
           label="Overall achievement"
           value={`${Math.round(overall)}%`}
-          detail={`${expiredCount} expired · ${targets.filter((target) => target.displayStatus === "paused").length} paused`}
+          detail={`${expiredCount} expired · ${effectiveTargets.filter((target) => target.displayStatus === "paused").length} paused`}
         />
       </div>
 
-      {targets.length === 0 ? (
+      {effectiveTargets.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center px-6 py-10 text-center">
             <span className="mb-3 grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
               <TargetIcon aria-hidden="true" />
             </span>
-            <h3 className="font-semibold">Set your first business target</h3>
+            <h3 className="font-semibold">
+              {isSpecificEmployeeSelected
+                ? `No targets found for ${selectedEmployeeName}`
+                : selectedCategory === "admin"
+                  ? "No targets assigned to you yet"
+                  : "No targets found"}
+            </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Choose a metric and period. Progress will be calculated from your existing business records.
+              {isSpecificEmployeeSelected
+                ? `Create a new target assigned to ${selectedEmployeeName} using the Set a target button above.`
+                : "Choose a metric and period. Progress will be calculated from your existing business records."}
             </p>
-            <Button className="mt-4" onClick={openNewTarget}><Plus aria-hidden="true" /> Create a target</Button>
+            {management && (
+              <Button className="mt-4" onClick={openNewTarget}><Plus aria-hidden="true" /> Set a target</Button>
+            )}
           </CardContent>
         </Card>
-      ) : (
+      ) : !management ? (
+        /* Employee view: their assigned targets */
         <>
-          {!management && (
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">Your targets</h3>
-                <p className="text-sm text-muted-foreground">Live progress for your current goals.</p>
-              </div>
-              <Link href="/targets" className="text-sm font-medium text-primary hover:underline">
-                Manage targets
-              </Link>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">Your targets</h3>
+              <p className="text-sm text-muted-foreground">Live progress for your current goals.</p>
             </div>
-          )}
-          {management && targets.length > 0 && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{targets.length} target{targets.length === 1 ? "" : "s"}</span>
-              <span aria-hidden="true">·</span>
-              <span>Historical achievements remain available here</span>
-            </div>
-          )}
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {shownTargets.map((target) => (
               <TargetCard
@@ -555,14 +705,177 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
               />
             ))}
           </div>
-          {!management && targets.length > shownTargets.length && (
-            <div className="text-center">
-              <Link href="/targets" className={buttonVariants({ variant: "outline" })}>
-                View all {targets.length} targets <ArrowUpRight aria-hidden="true" />
-              </Link>
+        </>
+      ) : isSpecificEmployeeSelected ? (
+        /* PART 2: When an employee is selected, display ONLY that employee's targets */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+            <span className="grid size-6 place-items-center rounded-full bg-blue-500/15 text-blue-700 text-xs font-semibold">
+              <User className="size-3.5" />
+            </span>
+            <h3 className="font-semibold text-base text-foreground">
+              {selectedEmployeeName}&apos;s Targets
+            </h3>
+            <Badge variant="secondary" className="text-xs font-normal">
+              {effectiveTargets.length}
+            </Badge>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {effectiveTargets.map((target) => (
+              <TargetCard
+                key={target.id}
+                target={target}
+                management={management}
+                onEdit={openEditTarget}
+                onPause={toggleTarget}
+                onDelete={setPendingDelete}
+              />
+            ))}
+          </div>
+        </div>
+      ) : selectedCategory === "all" ? (
+        /* PART 3: All Targets (no employee selected) - Clearly separate into Admin Targets and Employee Targets sections */
+        <div className="space-y-8">
+          {/* Section 1: Admin Targets */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2">
+                <span className="grid size-6 place-items-center rounded-full bg-amber-500/15 text-amber-700 text-xs font-semibold">
+                  <TargetIcon className="size-3.5" />
+                </span>
+                <h3 className="font-semibold text-base text-foreground">Admin Targets</h3>
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {allAdminTargets.length}
+                </Badge>
+              </div>
+            </div>
+            {allAdminTargets.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-3">No Admin targets created yet.</p>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {allAdminTargets.map((target) => (
+                  <TargetCard
+                    key={target.id}
+                    target={target}
+                    management={management}
+                    onEdit={openEditTarget}
+                    onPause={toggleTarget}
+                    onDelete={setPendingDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Employee Targets */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2">
+                <span className="grid size-6 place-items-center rounded-full bg-blue-500/15 text-blue-700 text-xs font-semibold">
+                  <User className="size-3.5" />
+                </span>
+                <h3 className="font-semibold text-base text-foreground">Employee Targets</h3>
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {allEmployeeTargets.length}
+                </Badge>
+              </div>
+            </div>
+            {allEmployeeTargets.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-3">No Employee targets found.</p>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {allEmployeeTargets.map((target) => (
+                  <TargetCard
+                    key={target.id}
+                    target={target}
+                    management={management}
+                    onEdit={openEditTarget}
+                    onPause={toggleTarget}
+                    onDelete={setPendingDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : selectedCategory === "admin" ? (
+        /* PART 3: Admin Targets - Display ONLY Admin targets */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+            <span className="grid size-6 place-items-center rounded-full bg-amber-500/15 text-amber-700 text-xs font-semibold">
+              <TargetIcon className="size-3.5" />
+            </span>
+            <h3 className="font-semibold text-base text-foreground">Admin Targets</h3>
+            <Badge variant="secondary" className="text-xs font-normal">
+              {allAdminTargets.length}
+            </Badge>
+          </div>
+          {allAdminTargets.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center px-6 py-10 text-center">
+                <p className="text-sm font-medium text-foreground">No targets assigned to you yet.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Create a new target assigned to Admin using the Set a target button above.
+                </p>
+                <Button className="mt-4" onClick={openNewTarget}>
+                  <Plus aria-hidden="true" /> Set a target
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {allAdminTargets.map((target) => (
+                <TargetCard
+                  key={target.id}
+                  target={target}
+                  management={management}
+                  onEdit={openEditTarget}
+                  onPause={toggleTarget}
+                  onDelete={setPendingDelete}
+                />
+              ))}
             </div>
           )}
-        </>
+        </div>
+      ) : (
+        /* PART 3: Employee Targets - Display ONLY Employee targets */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b pb-2">
+            <span className="grid size-6 place-items-center rounded-full bg-blue-500/15 text-blue-700 text-xs font-semibold">
+              <User className="size-3.5" />
+            </span>
+            <h3 className="font-semibold text-base text-foreground">Employee Targets</h3>
+            <Badge variant="secondary" className="text-xs font-normal">
+              {allEmployeeTargets.length}
+            </Badge>
+          </div>
+          {allEmployeeTargets.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center px-6 py-10 text-center">
+                <p className="text-sm font-medium text-foreground">No Employee targets found.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Create a target assigned to an employee using the Set a target button above.
+                </p>
+                <Button className="mt-4" onClick={openNewTarget}>
+                  <Plus aria-hidden="true" /> Set a target
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {allEmployeeTargets.map((target) => (
+                <TargetCard
+                  key={target.id}
+                  target={target}
+                  management={management}
+                  onEdit={openEditTarget}
+                  onPause={toggleTarget}
+                  onDelete={setPendingDelete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
@@ -574,6 +887,37 @@ export function TargetsPanel({ targets, today, management = false }: Props) {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={submitTarget} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="target-assignee">Assign Target To</Label>
+              <select
+                id="target-assignee"
+                required
+                value={form.employeeId}
+                onChange={(event) => updateForm("employeeId", event.target.value)}
+                className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="" disabled>Select an assignee</option>
+                {currentUser && (
+                  <option value={currentUser.uid}>
+                    Admin – {currentUser.name} (Myself)
+                  </option>
+                )}
+                {employees.length > 0 && (
+                  <optgroup label="Employees">
+                    {employees.map((emp) => (
+                      <option key={emp.uid} value={emp.uid}>
+                        Employee – {emp.name} {emp.email ? `(${emp.email})` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {employees.length === 0 && !currentUser && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  No accounts found. Create employees in Settings &gt; Employee Access first.
+                </p>
+              )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="target-name">Target name</Label>
               <Input

@@ -15,6 +15,29 @@ export async function listBookings(): Promise<Booking[]> {
   return [...live, ...past];
 }
 
+/**
+ * Lightweight projection used only for dashboard aggregation.
+ * Avoids fetching large fields like notes, itinerary, description, attachments.
+ */
+export async function listBookingsForDashboard(): Promise<Booking[]> {
+  const snap = await adminDb.collection(COL.bookings)
+    .where("isDeleted", "==", false)
+    .select(
+      "id", "status", "travelStart", "memberCount", "maxPersons",
+      "currency", "totalAmount", "packageId", "bookingNo", "title",
+      "destination", "createdBy", "isDeleted"
+    )
+    .get();
+  const all = snap.docs.map((d) => serializeDoc<Booking>(d));
+  const live = all
+    .filter((b) => b.status === "open" || b.status === "closed")
+    .sort((a, b) => a.travelStart.localeCompare(b.travelStart));
+  const past = all
+    .filter((b) => b.status === "completed" || b.status === "cancelled")
+    .sort((a, b) => b.travelStart.localeCompare(a.travelStart));
+  return [...live, ...past];
+}
+
 export async function getBooking(id: string): Promise<Booking | null> {
   const snap = await adminDb.collection(COL.bookings).doc(id).get();
   if (!snap.exists || snap.data()?.isDeleted) return null;

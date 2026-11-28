@@ -7,6 +7,7 @@ export const EMPLOYEE_MODULES = [
   "dashboard",
   "bookings",
   "packages",
+  "package-builder",
   "customers",
   "vendors",
   "crm",
@@ -14,6 +15,7 @@ export const EMPLOYEE_MODULES = [
   "invoices",
   "finance",
   "analytics",
+  "targets",
 ] as const;
 export type ModuleKey = (typeof EMPLOYEE_MODULES)[number];
 

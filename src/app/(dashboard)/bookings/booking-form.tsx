@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/shared/page-header";
 import { CURRENCIES, formatMoney, fromMinor } from "@/lib/finance/currency";
 import { pricePerPerson } from "@/lib/finance/pricing";
 import { bookingInputSchema, type BookingInput } from "@/lib/validators/booking";
@@ -35,11 +36,21 @@ export function BookingForm({
   booking,
   defaultCloseDate = "",
   vendors = [],
+  showPageHeader = false,
+  headerTitle,
+  headerDescription,
+  backHref,
+  backLabel,
 }: {
   packages: TravelPackage[];
   booking: Booking | null;
   defaultCloseDate?: string;
   vendors?: Vendor[];
+  showPageHeader?: boolean;
+  headerTitle?: string;
+  headerDescription?: string;
+  backHref?: string;
+  backLabel?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -48,7 +59,7 @@ export function BookingForm({
 
   const {
     register, control, handleSubmit, setValue, getValues,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<BookingInput>({
     resolver: zodResolver(bookingInputSchema) as Resolver<BookingInput>,
     defaultValues: booking
@@ -120,6 +131,20 @@ export function BookingForm({
 
   const selectedVendorObjects = vendors.filter((v) => watchedVendorIds.includes(v.id));
 
+  const initialVendorCount = booking?.vendorIds?.length || 0;
+  const hasChanges = isDirty || watchedVendorIds.length !== initialVendorCount;
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasChanges]);
+
   function onSubmit(v: BookingInput) {
     startTransition(async () => {
       const input = { ...v, maxPersons: v.minPersons };
@@ -136,7 +161,19 @@ export function BookingForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-6">
+    <>
+      {showPageHeader && (
+        <PageHeader
+          title={headerTitle || (booking ? `Edit ${booking.title}` : "New booking")}
+          description={headerDescription || (booking ? booking.bookingNo : "Set up the trip. You add members on the next screen.")}
+          backHref={backHref || (booking ? `/bookings/${booking.id}` : "/bookings")}
+          backLabel={backLabel || "Back to Bookings"}
+          hasUnsavedChanges={hasChanges}
+          confirmTitle="Unsaved Booking Details"
+          confirmMessage="You have entered booking details that haven't been saved yet. Leaving this page will discard your changes. Are you sure you want to go back?"
+        />
+      )}
+      <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-6">
       <Card>
         <CardHeader><CardTitle>Trip</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -563,5 +600,6 @@ export function BookingForm({
         </Link>
       </div>
     </form>
+    </>
   );
 }

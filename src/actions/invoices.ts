@@ -227,10 +227,16 @@ export async function updateInvoice(id: string, input: unknown): Promise<Result>
   ) {
     return { ok: false, error: `Set an exchange rate for ${parsed.data.currency} in Settings before recording invoice payments or package costs` };
   }
+  const business = {
+    name: settings.business.name || old.business.name,
+    tagline: settings.business.tagline ?? old.business.tagline,
+    gstin: settings.business.gstin ?? old.business.gstin,
+    address: settings.business.address ?? old.business.address,
+  };
   const invoice = buildInvoice(
     parsed.data,
     parsed.data.invoiceNo || old.invoiceNo,
-    old.business,
+    business,
     settings.fx.rates,
     old,
   );

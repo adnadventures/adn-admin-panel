@@ -1,16 +1,15 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { requireModule } from "@/lib/auth/session";
-import { listBookings } from "@/lib/data/bookings";
-import { listExpenses } from "@/lib/data/expenses";
+import { listBookingsForDashboard } from "@/lib/data/bookings";
+import { listExpensesForDashboard } from "@/lib/data/expenses";
 import { listInvoices } from "@/lib/data/invoices";
-import { listPackages } from "@/lib/data/packages";
+import { listPackagesForDashboard } from "@/lib/data/packages";
 import type { CurrencyCode } from "@/lib/finance/currency";
 import { convertMoneyEntryAmount } from "@/lib/finance/fx";
 import { getSettings } from "@/lib/settings";
 import { todayIST } from "@/lib/format";
 import { listTargetsWithProgress } from "@/lib/data/targets";
 import { DashboardOverview } from "./dashboard-overview";
-import { TargetsPanel } from "./targets/targets-panel";
 
 function lastSixMonths(today: string) {
   const date = new Date(`${today}T00:00:00.000Z`);
@@ -34,16 +33,17 @@ export default async function DashboardPage() {
   const monthKeys = new Set(months.map(({ key }) => key));
   const canViewFinancials = user.role === "admin" || user.role === "manager";
   const [bookings, packages, expenses, invoices, settings, targets] = await Promise.all([
-    listBookings(),
-    listPackages(),
-    canViewFinancials ? listExpenses() : Promise.resolve([]),
+    listBookingsForDashboard(),
+    listPackagesForDashboard(),
+    canViewFinancials ? listExpensesForDashboard() : Promise.resolve([]),
     canViewFinancials ? listInvoices() : Promise.resolve([]),
     canViewFinancials ? getSettings() : Promise.resolve(null),
     canViewFinancials
       ? listTargetsWithProgress()
-      : Promise.resolve([]),
-  ]);
-  const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
+      : user.role === "employee"
+        ? listTargetsWithProgress({ employeeId: user.uid })
+        : Promise.resolve([]),
+  ]);  const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
   const expensesByBooking = new Map<string, typeof expenses>();
   const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
 
@@ -198,12 +198,21 @@ export default async function DashboardPage() {
     ],
   )).sort();
 
+  const isManagement = user.role === "admin" || user.role === "manager";
+  const adminTargets = isManagement
+    ? targets.filter((t) => t.assignmentType === "admin" || t.employeeId === user.uid || (!t.employeeId && !t.assignmentType))
+    : [];
+  const employeeTargets = isManagement
+    ? targets.filter((t) => t.assignmentType === "employee" || (t.employeeId && t.employeeId !== user.uid && t.assignmentType !== "admin"))
+    : targets;
+
   return (
     <>
       <PageHeader
         title={`Welcome, ${user.name.split(" ")[0]}`}
         description="Here's what's happening at ADN Adventures."
       />
+
       <DashboardOverview
         today={today}
         months={monthly}
@@ -220,12 +229,9 @@ export default async function DashboardPage() {
         statuses={statuses}
         upcoming={upcoming}
         showFinancials={canViewFinancials}
+        adminTargets={adminTargets}
+        employeeTargets={employeeTargets}
       />
-      {(user.role === "admin" || user.role === "manager") && (
-        <div className="mt-8">
-          <TargetsPanel targets={targets} today={today} />
-        </div>
-      )}
     </>
   );
 }

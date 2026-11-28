@@ -14,6 +14,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", roles: ALL, module: "dashboard" },
   { label: "Bookings", href: "/bookings", roles: ALL, module: "bookings" },
   { label: "Packages", href: "/packages", roles: ALL, module: "packages" },
+  { label: "Package Builder", href: "/package-builder", roles: ALL, module: "package-builder" },
   { label: "Customers", href: "/customers", roles: ALL, module: "customers" },
   { label: "Vendors", href: "/vendors", roles: MGMT, module: "vendors" },
   { label: "CRM", href: "/crm", roles: ALL, module: "crm" },
@@ -22,7 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Finance", href: "/finance", roles: MGMT, module: "finance" },
   { label: "Company Expenses", href: "/company-expenses", roles: MGMT, module: "finance" },
   { label: "Analytics", href: "/analytics", roles: MGMT, module: "analytics" },
-  { label: "Targets", href: "/targets", roles: MGMT, module: null },
+  { label: "Targets", href: "/targets", roles: [...MGMT, "employee"], module: "targets" },
   { label: "Settings", href: "/settings", roles: ["admin"], module: null },
 ];
 

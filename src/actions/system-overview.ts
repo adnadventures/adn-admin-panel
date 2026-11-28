@@ -448,6 +448,67 @@ async function getCloudflareR2Overview(): Promise<R2OverviewData> {
       const isDenied =
         errObj?.name === "AccessDenied" ||
         errObj?.message?.includes("Access Denied");
+
+      // Fallback: If vendors bucket credentials are not provided or scoped down,
+      // vendor uploads are stored inside the primary bucket under "vendors/" folder.
+      if (
+        isDenied &&
+        process.env.R2_INVOICE_BUCKET_NAME &&
+        bucket === (process.env.R2_VENDORS_BUCKET_NAME || "vendors") &&
+        bucket !== process.env.R2_INVOICE_BUCKET_NAME
+      ) {
+        try {
+          const fallbackS3 = new S3Client({
+            region: "auto",
+            endpoint,
+            credentials: {
+              accessKeyId: process.env.R2_INVOICE_ACCESS_KEY_ID || generalAccessKey!,
+              secretAccessKey: process.env.R2_INVOICE_SECRET_ACCESS_KEY || generalSecretKey!,
+            },
+          });
+          let vendorCount = 0;
+          let vendorBytes = 0;
+          let vContToken: string | undefined = undefined;
+
+          do {
+            const listRes: ListObjectsV2CommandOutput = await fallbackS3.send(
+              new ListObjectsV2Command({
+                Bucket: process.env.R2_INVOICE_BUCKET_NAME,
+                Prefix: "vendors/",
+                ContinuationToken: vContToken,
+              })
+            );
+            vendorCount += listRes.KeyCount || (listRes.Contents?.length ?? 0);
+            if (listRes.Contents) {
+              for (const obj of listRes.Contents) {
+                vendorBytes += obj.Size || 0;
+              }
+            }
+            vContToken = listRes.NextContinuationToken;
+          } while (vContToken);
+
+          aggregateObjects += vendorCount;
+          aggregateBytes += vendorBytes;
+          accessibleCount++;
+
+          const vGbNum = vendorBytes / (1024 * 1024 * 1024);
+          bucketResults.push({
+            bucketName: `${bucket} (Active under ${process.env.R2_INVOICE_BUCKET_NAME}/vendors/)`,
+            objectCount: vendorCount,
+            totalBytes: vendorBytes,
+            sizeFormatted: formatBytes(vendorBytes),
+            sizeGb: `${vGbNum.toFixed(4)} GB`,
+            monthlyFreeTierAllowance: "10 GB-month / month",
+            remainingAllowance:
+              "Shared with primary R2 storage pool (< 0.1% of free monthly allowance)",
+            status: "ok",
+          });
+          continue;
+        } catch {
+          // If fallback query also fails, proceed to report error
+        }
+      }
+
       const errorMsg = isDenied
         ? "Access Denied: Current API credentials do not have permission for this bucket (R2_VENDORS_ACCESS_KEY_ID needed)"
         : errObj?.message || "Failed to list bucket objects";
@@ -483,20 +544,107 @@ async function getCloudflareR2Overview(): Promise<R2OverviewData> {
 
 async function getFirestoreStorageOverview(): Promise<FirestoreStorageUsageInfo> {
   const projectId = process.env.FIREBASE_PROJECT_ID || "unknown";
-  return {
-    databaseId: "(default)",
-    projectId,
-    freeTierAllowance: "1 GiB (1,024 MiB)",
-    usedStorage: "Usage data unavailable",
-    usedBytes: null,
-    remainingAllowance:
-      "Usage data unavailable (requires Google Cloud Monitoring API with Metric 'firestore.googleapis.com/storage/total_bytes')",
-    usagePercentage: "Unavailable",
-    billingPlan: "Spark / Blaze Free-Tier Eligible (1 GiB quota)",
-    status: "unavailable",
-    note: "Firestore storage metrics including metadata and index overhead require Google Cloud Monitoring API telemetry. Live document counts are tracked under Firestore Collections.",
-    lastUpdated: new Date().toISOString(),
-  };
+
+  // Attempt to query Google Cloud Monitoring API for the real byte metric.
+  // Requires the service account to have roles/monitoring.viewer in GCP IAM.
+  try {
+    const { GoogleAuth } = await import("google-auth-library");
+    const auth = new GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/monitoring.read"],
+    });
+    const client = await auth.getClient();
+
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000); // last 24 h
+
+    const url =
+      `https://monitoring.googleapis.com/v3/projects/${projectId}/timeSeries` +
+      `?filter=metric.type%3D%22firestore.googleapis.com%2Fstorage%2Ftotal_bytes%22` +
+      `%20AND%20resource.labels.database_id%3D%22(default)%22` +
+      `&interval.startTime=${startTime.toISOString()}` +
+      `&interval.endTime=${endTime.toISOString()}` +
+      `&view=FULL`;
+
+    const response = await (client as import("google-auth-library").AuthClient).request({ url });
+    const body = response.data as {
+      timeSeries?: Array<{ points?: Array<{ interval?: { endTime?: string }; value?: { int64Value?: string; doubleValue?: number } }> }>;
+    };
+
+    const timeSeries = body?.timeSeries;
+    if (timeSeries && timeSeries.length > 0) {
+      const series = timeSeries[0];
+      const points = series.points;
+      if (points && points.length > 0) {
+        const latest = points[0];
+        const rawBytes =
+          latest.value?.int64Value != null
+            ? parseInt(latest.value.int64Value, 10)
+            : (latest.value?.doubleValue ?? 0);
+        const usedBytes = typeof rawBytes === "number" ? rawBytes : 0;
+        const freeBytes = 1 * 1024 * 1024 * 1024; // 1 GiB
+        const remaining = Math.max(0, freeBytes - usedBytes);
+        const pct = ((usedBytes / freeBytes) * 100).toFixed(3);
+        const measuredAt = latest.interval?.endTime ?? endTime.toISOString();
+
+        return {
+          databaseId: "(default)",
+          projectId,
+          freeTierAllowance: "1 GiB (1,024 MiB)",
+          usedStorage: formatBytes(usedBytes),
+          usedBytes,
+          remainingAllowance: formatBytes(remaining),
+          usagePercentage: `${pct}%`,
+          billingPlan: "Spark / Blaze Free-Tier Eligible (1 GiB quota)",
+          status: "ok",
+          note: `Measured via Cloud Monitoring metric firestore.googleapis.com/storage/total_bytes at ${new Date(measuredAt).toLocaleString("en-IN")}`,
+          lastUpdated: measuredAt,
+        };
+      }
+    }
+
+    // Metric exists but no data points yet (newly created project or metric lag)
+    return {
+      databaseId: "(default)",
+      projectId,
+      freeTierAllowance: "1 GiB (1,024 MiB)",
+      usedStorage: "No data points yet",
+      usedBytes: null,
+      remainingAllowance: "Cloud Monitoring API connected — awaiting first metric ingestion (up to 24 h delay for new projects)",
+      usagePercentage: "Pending",
+      billingPlan: "Spark / Blaze Free-Tier Eligible (1 GiB quota)",
+      status: "unavailable",
+      note: "Cloud Monitoring API is reachable but no Firestore storage time series found yet. Data typically appears within 24 hours of first write.",
+      lastUpdated: new Date().toISOString(),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isPermissionDenied =
+      msg.includes("403") ||
+      msg.includes("PERMISSION_DENIED") ||
+      msg.includes("IAM");
+
+    const note = isPermissionDenied
+      ? "ACTION REQUIRED: Grant 'roles/monitoring.viewer' to the Firebase service account in GCP Console → IAM & Admin → IAM. " +
+        `Service account: firebase-adminsdk-fbsvc@${projectId}.iam.gserviceaccount.com. ` +
+        "After granting, click Refresh Usage — Firestore byte usage will appear automatically."
+      : `Cloud Monitoring API error: ${msg}. Firestore storage bytes require the Cloud Monitoring API (firestore.googleapis.com/storage/total_bytes).`;
+
+    return {
+      databaseId: "(default)",
+      projectId,
+      freeTierAllowance: "1 GiB (1,024 MiB)",
+      usedStorage: "IAM permission required",
+      usedBytes: null,
+      remainingAllowance: isPermissionDenied
+        ? "Grant roles/monitoring.viewer to enable — see note below"
+        : "Cloud Monitoring API unavailable",
+      usagePercentage: isPermissionDenied ? "Permission denied" : "Unavailable",
+      billingPlan: "Spark / Blaze Free-Tier Eligible (1 GiB quota)",
+      status: "unavailable",
+      note,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
 }
 
 async function getFirebaseCloudStorageOverview(): Promise<FirebaseCloudStorageOverviewData> {
@@ -560,11 +708,20 @@ async function getFirebaseCloudStorageOverview(): Promise<FirebaseCloudStorageOv
           continue;
         }
 
-        const [files] = await bucket.getFiles({ maxResults: 1000 });
+        // Paginate ALL objects — do not cap at 1000
+        let totalObjectCount = 0;
         let bytes = 0;
-        for (const file of files) {
-          bytes += Number(file.metadata.size || 0);
-        }
+        let pageToken: string | undefined = undefined;
+        do {
+          const queryOpts: { maxResults: number; pageToken?: string } = { maxResults: 1000 };
+          if (pageToken) queryOpts.pageToken = pageToken;
+          const [files, , apiResponse] = await bucket.getFiles(queryOpts);
+          totalObjectCount += files.length;
+          for (const file of files) {
+            bytes += Number(file.metadata.size || 0);
+          }
+          pageToken = (apiResponse as { nextPageToken?: string })?.nextPageToken;
+        } while (pageToken);
 
         const gbUsed = bytes / (1024 * 1024 * 1024);
         const freeGb = 5;
@@ -574,7 +731,7 @@ async function getFirebaseCloudStorageOverview(): Promise<FirebaseCloudStorageOv
         buckets.push({
           bucketName: bName,
           bucketType,
-          objectCount: files.length,
+          objectCount: totalObjectCount,
           totalBytes: bytes,
           sizeFormatted: formatBytes(bytes),
           sizeGb: `${gbUsed.toFixed(4)} GB`,

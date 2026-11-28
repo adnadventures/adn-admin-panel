@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/shared/page-header";
 import { requireModuleEditor } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings";
 import { PackageForm } from "../package-form";
@@ -8,9 +7,14 @@ export default async function NewPackagePage() {
   const settings = await getSettings();
 
   return (
-    <>
-      <PageHeader title="New package" description="Create a tour package." />
-      <PackageForm pkg={null} rates={settings.fx.rates} />
-    </>
+    <PackageForm
+      pkg={null}
+      rates={settings.fx.rates}
+      showPageHeader
+      headerTitle="New package"
+      headerDescription="Create a tour package."
+      backHref="/packages"
+      backLabel="Back to Packages"
+    />
   );
 }
